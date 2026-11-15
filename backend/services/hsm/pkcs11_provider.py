@@ -36,7 +36,7 @@ _ML_DSA_KEY_TYPE = None
 
 try:
     import pkcs11
-    from pkcs11 import KeyType, Attribute, Mechanism, MechanismFlag, ObjectClass
+    from pkcs11 import KeyType, Attribute, CertificateType, Mechanism, MechanismFlag, ObjectClass
     from pkcs11.util.rsa import encode_rsa_public_key
     from pkcs11.util.ec import encode_ec_public_key, encode_named_curve_parameters
     PKCS11_AVAILABLE = True
@@ -626,7 +626,72 @@ class Pkcs11Provider(BaseHsmProvider):
             
         except pkcs11.PKCS11Error as e:
             raise HsmOperationError(f"Failed to get public key: {str(e)}")
-    
+
+    def get_certificate(self, key_identifier: str) -> Optional[bytes]:
+        """DER of the certificate object carrying this key id, or None."""
+        if not self._session:
+            raise HsmOperationError("Not connected")
+
+        try:
+            key_id = bytes.fromhex(key_identifier)
+            for obj in self._session.get_objects({
+                Attribute.CLASS: ObjectClass.CERTIFICATE,
+                Attribute.ID: key_id
+            }):
+                value = self._attr(obj, Attribute.VALUE)
+                if value:
+                    return bytes(value)
+            return None
+
+        except pkcs11.PKCS11Error as e:
+            raise HsmOperationError(f"Failed to read certificate: {str(e)}")
+
+    def store_certificate(self, key_identifier: str, cert_der: bytes,
+                          label: Optional[str] = None) -> None:
+        """Store the certificate at the key's id (PKCS#15 maps it to the same PIV slot)."""
+        if not self._session:
+            raise HsmOperationError("Not connected")
+
+        try:
+            attrs = {
+                Attribute.CLASS: ObjectClass.CERTIFICATE,
+                # CKA_CERTIFICATE_TYPE is required by SoftHSM and harmless elsewhere
+                Attribute.CERTIFICATE_TYPE: CertificateType.X_509,
+                Attribute.ID: bytes.fromhex(key_identifier),
+                Attribute.VALUE: cert_der,
+                Attribute.TOKEN: True,
+            }
+            # CKA_SUBJECT is a required certificate attribute (PKCS#11 spec):
+            # SoftHSM refuses the object without it, so it is read out of the DER.
+            from asn1crypto.x509 import Certificate as AsnCertificate
+            attrs[Attribute.SUBJECT] = AsnCertificate.load(cert_der).subject.dump()
+            if label:
+                attrs[Attribute.LABEL] = label
+            self._session.create_object(attrs)
+            logger.info(f"Stored certificate at key id {key_identifier}")
+
+        except pkcs11.PKCS11Error as e:
+            raise HsmOperationError(f"Failed to store certificate: {str(e) or type(e).__name__}")
+
+    def delete_certificate(self, key_identifier: str) -> int:
+        """Remove certificate objects at this key id; returns how many were removed."""
+        if not self._session:
+            raise HsmOperationError("Not connected")
+
+        try:
+            key_id = bytes.fromhex(key_identifier)
+            removed = 0
+            for obj in self._session.get_objects({
+                Attribute.CLASS: ObjectClass.CERTIFICATE,
+                Attribute.ID: key_id
+            }):
+                obj.destroy()
+                removed += 1
+            return removed
+
+        except pkcs11.PKCS11Error as e:
+            raise HsmOperationError(f"Failed to delete certificate: {str(e)}")
+
     def sign(
         self,
         key_identifier: str,
