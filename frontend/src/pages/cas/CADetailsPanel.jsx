@@ -21,7 +21,8 @@ import { ComplianceProfileField } from '../../components/cas/ComplianceProfileFi
 import { UploadCACertModal } from './UploadCACertModal'
 import { ImportCaKeyModal } from '../../components/cas/ImportCaKeyModal'
 import { casService } from '../../services'
-import { formatDate, downloadBlob, extractData } from '../../lib/utils'
+import { formatDate, downloadBlob } from '../../lib/utils'
+import { holdsCertOnToken, uploadCertToToken } from '../../lib/tokenCertUpload'
 import { useNotification } from '../../contexts/NotificationContext'
 import { holdsNoKey, needsKeyImport } from '../../lib/caSelection'
 import { canExportPrivateKey } from '../../lib/exportPermissions'
@@ -94,30 +95,6 @@ export function CADetailsPanel({ ca, canWrite, canDelete, hasPermission, onExpor
       await handleDownloadCsr()
     } catch (err) {
       showError(err?.message || t('cas.csrDownloadFailed'))
-    }
-  }
-
-  // Writes this CA's certificate into the token slot that holds its signing key.
-  const uploadTokenCert = async (overwrite = false) => {
-    try {
-      const result = extractData(await casService.uploadTokenCert(ca.id, overwrite ? { overwriteTokenCert: true } : {}))
-      showSuccess(t(result?.already ? 'cas.tokenCertAlready' : 'cas.tokenCertUploaded'))
-      return true
-    } catch (err) {
-      const existing = err?.status === 409 ? err.data?.details?.existing : null
-      if (!existing) {
-        showError(t('cas.tokenCertUploadFailed', { error: err?.message || err }))
-        return false
-      }
-      const replace = await showConfirm(
-        t('cas.tokenCertConflictConfirm', {
-          subject: existing.subject,
-          serial: existing.serial,
-          notAfter: existing.not_after,
-        }),
-        { title: t('cas.updateTokenCert'), variant: 'danger' },
-      )
-      return replace && uploadTokenCert(true)
     }
   }
 
@@ -297,8 +274,8 @@ export function CADetailsPanel({ ca, canWrite, canDelete, hasPermission, onExpor
             <UploadSimple size={14} /> {t('cas.uploadCertificate')}
           </Button>
         )}
-        {canWrite('cas') && ca.uses_hsm && ca.hsm_provider_type === 'pkcs11' && !ca.pending && !ca.revoked && (
-          <Button type="button" size="xs" variant="secondary" onClick={() => uploadTokenCert()}>
+        {canWrite('cas') && holdsCertOnToken(ca) && !ca.pending && !ca.revoked && (
+          <Button type="button" size="xs" variant="secondary" onClick={() => uploadCertToToken({ ca, t, showSuccess, showError, showConfirm })}>
             <Key size={14} /> {t('cas.updateTokenCert')}
           </Button>
         )}
