@@ -13,6 +13,10 @@ Starting with v2.48, UCM uses Major.Build versioning (e.g., 2.48, 2.49). Earlier
 
 - FIPS: the `-fips` Docker image recomputed the integrity value of the FIPS module at each start, so a `fips.so` modified after the build still passed its self-tests; the start in FIPS mode now compares it to the value recorded when the image was built and refuses a modified module, a missing or malformed record, or an `OPENSSL_MODULES` that is not the directory of that module.
 
+### Added
+
+- CA certificate on the token: creating an X.509 CA on an existing PKCS#11 key offers *Update certificate on token* — after UCM signs the CA, its DER is written into the token slot that holds the signing key (a PKCS#11 certificate object carrying that key's `CKA_ID`, so a PIV card now holds the certificate that matches its key instead of a placeholder). A slot holding a different certificate is refused with 409 **before** the CA is created, its subject, serial and expiry in `details.existing`; confirming the dialog repeats the request with `overwriteTokenCert`. A failed write never rolls back the CA: the outcome rides in the response as `token_cert_upload`, and `POST /api/v2/cas/<id>/hsm/upload-cert` retries it from the CA details panel — same conflict rules, `already` when the token holds exactly that certificate, 400 for a CA no HSM key backs, 502 when the token refuses.
+
 ## [2.254.2] - 2026-11-15
 
 ### Changed

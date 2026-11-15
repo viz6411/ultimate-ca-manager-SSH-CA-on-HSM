@@ -98,7 +98,7 @@ function NameConstraintRows({ label, hint, addLabel, rows, onChange }) {
 
 export function CreateCAModal({ open, onClose, cas, onSuccess }) {
   const { t } = useTranslation()
-  const { showSuccess, showError } = useNotification()
+  const { showSuccess, showError, showWarning, showConfirm } = useNotification()
   const { muteToasts } = useWebSocket()
 
   const [createFormType, setCreateFormType] = useState('root')
@@ -110,6 +110,7 @@ export function CreateCAModal({ open, onClose, cas, onSuccess }) {
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [createFormPathLength, setCreateFormPathLength] = useState('')
   const [createFormNamedUrls, setCreateFormNamedUrls] = useState(false)
+  const [createFormUpdateTokenCert, setCreateFormUpdateTokenCert] = useState(false)
   const [createFormNCPermitted, setCreateFormNCPermitted] = useState([])
   const [createFormNCExcluded, setCreateFormNCExcluded] = useState([])
   const [createFormDigest, setCreateFormDigest] = useState('auto')
@@ -182,6 +183,7 @@ export function CreateCAModal({ open, onClose, cas, onSuccess }) {
     setCreateFormHsmKeyLabel('')
     setCreateFormHsmKeyAlgorithm(CA_DEFAULT_LABELS[0])
     setCreateFormHsmKeyId('')
+    setCreateFormUpdateTokenCert(false)
   }, [open])
 
   // Policies of the parent CA, or the global ones for a root/external CA (#397)
@@ -401,12 +403,31 @@ export function CreateCAModal({ open, onClose, cas, onSuccess }) {
             return
           }
           data.hsmKeyId = parseInt(createFormHsmKeyId, 10)
+          if (createFormUpdateTokenCert) data.updateTokenCert = true
         }
       }
 
       muteToasts()
-      const response = await casService.create(data)
-      const created = extractData(response)
+      let created
+      try {
+        created = extractData(await casService.create(data))
+      } catch (error) {
+        // The token slot already holds a certificate: the backend answers this
+        // before the CA exists, so replacing it is decided here, not after.
+        const existing = error.status === 409 ? error.data?.details?.existing : null
+        if (!existing) throw error
+        const replace = await showConfirm(
+          t('cas.tokenCertConflictConfirm', {
+            subject: existing.subject,
+            serial: existing.serial,
+            notAfter: existing.not_after,
+          }),
+          { title: t('cas.updateTokenCert'), variant: 'danger' },
+        )
+        if (!replace) throw error
+        created = extractData(await casService.create({ ...data, overwriteTokenCert: true }))
+      }
+
       if (created?.pending && created?.csr_pem) {
         // Hand the CSR to the user right away — it goes to the external CA.
         const name = (created.descr || created.common_name || 'ca').replace(/[^a-zA-Z0-9._-]+/g, '_')
@@ -415,6 +436,10 @@ export function CreateCAModal({ open, onClose, cas, onSuccess }) {
       } else {
         showSuccess(t('messages.success.create.ca'))
       }
+      // The CA exists either way; a failed upload is retried from its details.
+      const upload = created?.token_cert_upload
+      if (upload?.ok) showSuccess(t('cas.tokenCertUploaded'))
+      else if (upload) showWarning(t('cas.tokenCertUploadFailed', { error: upload.error }))
       onClose()
       onSuccess(created)
     } catch (error) {
@@ -678,6 +703,21 @@ export function CreateCAModal({ open, onClose, cas, onSuccess }) {
                     required
                   />
                 )
+              )}
+              {/* Cloud HSMs hold keys, not slots with certificates: PKCS#11 only */}
+              {createFormHsmKeyMode === 'existing' && hsmProviderType === 'pkcs11' && createFormType !== 'external' && (
+                <label className="flex items-start gap-2 text-sm text-text-secondary cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5"
+                    checked={createFormUpdateTokenCert}
+                    onChange={(e) => setCreateFormUpdateTokenCert(e.target.checked)}
+                  />
+                  <span>
+                    {t('cas.updateTokenCert')}
+                    <span className="block text-xs text-text-tertiary">{t('cas.updateTokenCertHint')}</span>
+                  </span>
+                </label>
               )}
             </>
           )}
