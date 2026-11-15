@@ -190,7 +190,8 @@ class TestUnreadableModule:
             db.session.add(row)
             db.session.commit()
             fake = type('Fake', (), {'test_connection': lambda self: {'success': True, 'module': {}}})()
-            monkeypatch.setattr(HsmService, '_get_provider_instance', classmethod(lambda cls, p: fake))
+            monkeypatch.setattr(HsmService, '_get_provider_instance',
+                                classmethod(lambda cls, p, fresh_view=False: fake))
             try:
                 HsmService.test_provider(row.id)
                 assert db.session.get(HsmProvider, row.id).module_info is None
