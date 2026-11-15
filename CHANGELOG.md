@@ -17,6 +17,15 @@ Starting with v2.48, UCM uses Major.Build versioning (e.g., 2.48, 2.49). Earlier
 
 - CA certificate on the token: creating an X.509 CA on an existing PKCS#11 key offers *Update certificate on token* — after UCM signs the CA, its DER is written into the token slot that holds the signing key (a PKCS#11 certificate object carrying that key's `CKA_ID`, so a PIV card now holds the certificate that matches its key instead of a placeholder). A slot holding a different certificate is refused with 409 **before** the CA is created, its subject, serial and expiry in `details.existing`; confirming the dialog repeats the request with `overwriteTokenCert`. A failed write never rolls back the CA: the outcome rides in the response as `token_cert_upload`, and `POST /api/v2/cas/<id>/hsm/upload-cert` retries it from the CA details panel — same conflict rules, `already` when the token holds exactly that certificate, 400 for a CA no HSM key backs, 502 when the token refuses.
 
+### Changed
+
+- Docker image: ships `opensc` and `libpcsclite1` as well, so the container can reach a smart card through `pcscd` and use `piv-tool` for the containers a card's PKCS#11 layer cannot create objects in.
+
+### Fixed
+
+- HSM: a server process saw a token as it was when that process first read it, because a Cryptoki module enumerates the token's objects only when its initialized instance is created. A certificate upload was refused as `already` while the slot in fact held a different certificate, key sync reported keys the card no longer had, and a provider test passed for a token that had been replaced. The calls that decide something about a token - the provider test, key sync, and reading and uploading the certificate of a key's slot - now re-initialize the module first; a session this process still holds suppresses that, since pulling the module out would invalidate the call in flight.
+- HSM: on a card OpenSC drives as emulated PKCS#15, creating a token object is not implemented (`C_CreateObject` answers `CKR_FUNCTION_NOT_SUPPORTED`, measured with `pkcs11-tool` on a Token2 PIV card, and `pkcs15-init` refuses to bind the card; the same error is OpenSC issue #1705), so a CA certificate could not be written onto such a card at all. `store_certificate` now writes the PIV container that holds the key - `CKA_ID` 01..04 are the slots 9A/9C/9D/9E - through `piv-tool`, and counts it as written only when the certificate reads back byte-identical, because `piv-tool` exits non-zero even after writing the object and the card refuses the write unless its session is authenticated. `C_DestroyObject` is unsupported there too, so deleting a certificate reports nothing removed instead of failing the overwrite that follows.
+
 ## [2.254.2] - 2026-11-15
 
 ### Changed
