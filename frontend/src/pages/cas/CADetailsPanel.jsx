@@ -21,7 +21,7 @@ import { ComplianceProfileField } from '../../components/cas/ComplianceProfileFi
 import { UploadCACertModal } from './UploadCACertModal'
 import { ImportCaKeyModal } from '../../components/cas/ImportCaKeyModal'
 import { casService } from '../../services'
-import { formatDate, downloadBlob } from '../../lib/utils'
+import { formatDate, downloadBlob, extractData } from '../../lib/utils'
 import { useNotification } from '../../contexts/NotificationContext'
 import { holdsNoKey, needsKeyImport } from '../../lib/caSelection'
 import { canExportPrivateKey } from '../../lib/exportPermissions'
@@ -100,8 +100,8 @@ export function CADetailsPanel({ ca, canWrite, canDelete, hasPermission, onExpor
   // Writes this CA's certificate into the token slot that holds its signing key.
   const uploadTokenCert = async (overwrite = false) => {
     try {
-      await casService.uploadTokenCert(ca.id, overwrite ? { overwriteTokenCert: true } : {})
-      showSuccess(t('cas.tokenCertUploaded'))
+      const result = extractData(await casService.uploadTokenCert(ca.id, overwrite ? { overwriteTokenCert: true } : {}))
+      showSuccess(t(result?.already ? 'cas.tokenCertAlready' : 'cas.tokenCertUploaded'))
       return true
     } catch (err) {
       const existing = err?.status === 409 ? err.data?.details?.existing : null

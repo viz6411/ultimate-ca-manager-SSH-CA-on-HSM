@@ -438,7 +438,7 @@ export function CreateCAModal({ open, onClose, cas, onSuccess }) {
       }
       // The CA exists either way; a failed upload is retried from its details.
       const upload = created?.token_cert_upload
-      if (upload?.ok) showSuccess(t('cas.tokenCertUploaded'))
+      if (upload?.ok) showSuccess(t(upload.already ? 'cas.tokenCertAlready' : 'cas.tokenCertUploaded'))
       else if (upload) showWarning(t('cas.tokenCertUploadFailed', { error: upload.error }))
       onClose()
       onSuccess(created)
