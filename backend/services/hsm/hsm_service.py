@@ -124,16 +124,20 @@ class HsmService:
         return list(cls._provider_registry.keys())
     
     @classmethod
-    def _get_provider_instance(cls, provider: HsmProvider) -> BaseHsmProvider:
+    def _get_provider_instance(cls, provider: HsmProvider,
+                               fresh_view: bool = False) -> BaseHsmProvider:
         """
         Get provider instance for a given HsmProvider model.
         
         Args:
             provider: HsmProvider model instance
-            
+            fresh_view: the caller reads the token in order to decide something about
+                it, so the provider must see the token as it is now, not as this
+                process last read it.
+
         Returns:
             Configured provider instance
-            
+
         Raises:
             HsmConfigError: If provider type not registered
         """
@@ -146,7 +150,9 @@ class HsmService:
         
         provider_class = cls._provider_registry[provider.type]
         config = provider.get_config()
-        return provider_class(config)
+        instance = provider_class(config)
+        instance.fresh_view = fresh_view
+        return instance
     
     # =========================================================================
     # Provider CRUD
@@ -344,7 +350,7 @@ class HsmService:
             raise ValueError(f"Provider not found: {provider_id}")
         
         try:
-            hsm = cls._get_provider_instance(provider)
+            hsm = cls._get_provider_instance(provider, fresh_view=True)
             result = hsm.test_connection()
             
             # Update provider status
@@ -734,7 +740,8 @@ class HsmService:
             raise ValueError(f"Provider not found: {provider_id}")
         
         try:
-            hsm = cls._get_provider_instance(provider)
+            # Key sync is what notices a token changed outside this process.
+            hsm = cls._get_provider_instance(provider, fresh_view=True)
             with hsm:
                 hsm_keys = hsm.list_keys()
             listing_errors = len(getattr(hsm, 'list_errors', None) or [])
@@ -836,7 +843,7 @@ class HsmService:
     def token_certificate(cls, hsm_key_id: int) -> Optional[Dict[str, Any]]:
         """Summary of the certificate the key's slot on the token holds now, if any."""
         key = cls._cert_slot(hsm_key_id)
-        with cls._get_provider_instance(key.provider) as hsm:
+        with cls._get_provider_instance(key.provider, fresh_view=True) as hsm:
             der = hsm.get_certificate(key.key_identifier)
         return cls._certificate_summary(der) if der else None
 
@@ -852,7 +859,7 @@ class HsmService:
         certificate and overwrite was not accepted.
         """
         key = cls._cert_slot(hsm_key_id)
-        with cls._get_provider_instance(key.provider) as hsm:
+        with cls._get_provider_instance(key.provider, fresh_view=True) as hsm:
             existing = hsm.get_certificate(key.key_identifier)
             if existing and existing == cert_der:
                 return {'ok': True, 'uploaded': False, 'already': True}
