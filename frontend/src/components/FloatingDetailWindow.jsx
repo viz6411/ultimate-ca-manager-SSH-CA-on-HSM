@@ -6,7 +6,7 @@
  */
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Certificate, ShieldCheck, Fingerprint, Trash, X, ArrowsClockwise, ShieldWarning, PushPin, SealCheck, Vault, PencilSimple } from '@phosphor-icons/react'
+import { Certificate, ShieldCheck, Fingerprint, Trash, X, ArrowsClockwise, ShieldWarning, PushPin, SealCheck, Vault, PencilSimple, Key } from '@phosphor-icons/react'
 import { FloatingWindow } from './ui/FloatingWindow'
 import { CertificateDetails } from './CertificateDetails'
 import { CertificateLintModal } from './CertificateLintModal'
@@ -32,6 +32,7 @@ import { canExportPrivateKey } from '../lib/exportPermissions'
 import { downloadExport } from '../lib/exportDownload'
 import { askRenewal } from '../lib/renewalPrompt'
 import { renameCertificate } from '../lib/certificateRename'
+import { holdsCertOnToken, uploadCertToToken } from '../lib/tokenCertUpload'
 import { showNotices } from '../lib/notices'
 
 const ENTITY_CONFIG = {
@@ -308,6 +309,9 @@ export function FloatingDetailWindow({ windowInfo }) {
     window.dispatchEvent(new CustomEvent('ucm:open-pins-modal', { detail: { caId: windowInfo.entityId } }))
   }
 
+  // The certificate a hardware-backed CA signs with belongs in the very slot its key sits in
+  const handleUploadTokenCert = () => uploadCertToToken({ ca: data, t, showSuccess, showError, showConfirm })
+
   // External-CSR CA lifecycle (#298)
   const handleDownloadCsr = async () => {
     try {
@@ -371,6 +375,7 @@ export function FloatingDetailWindow({ windowInfo }) {
     onOffline: isCA && canWrite('cas') && !data.offline && !data.pending && !data.revoked && data.has_private_key && !data.uses_hsm ? handleOffline : null,
     onRestore: isCA && canWrite('cas') && data.offline ? handleRestore : null,
     onManagePins: isCA && canWrite('cas') && canWrite('templates') && !data.pending ? handleManagePins : null,
+    onUploadTokenCert: isCA && canWrite('cas') && holdsCertOnToken(data) && !data.pending && !data.revoked ? handleUploadTokenCert : null,
     // External-CSR CA lifecycle (#298)
     canExport: !(isCA && data.pending),
     onDownloadCsr: isCA && data.has_csr ? handleDownloadCsr : null,
@@ -543,7 +548,7 @@ function DetailContent({ type, data, canWrite, canDelete, hasPermission, onExpor
 /**
  * ActionBar — Toolbar under the window header with labeled action buttons
  */
-function ActionBar({ onExport, hasPrivateKey, keyAlgorithm, canExportKey, entityType, entityName, onLint, onRequestKeyRecovery, onRename, onRenew, onRevoke, onUnhold, onOffline, onRestore, onManagePins, onDelete, canExport = true, onDownloadCsr, onUploadCertificate, onRenewCsr, chainVariantsFor, relatedCertificateId, t }) {
+function ActionBar({ onExport, hasPrivateKey, keyAlgorithm, canExportKey, entityType, entityName, onLint, onRequestKeyRecovery, onRename, onRenew, onRevoke, onUnhold, onOffline, onRestore, onManagePins, onUploadTokenCert, onDelete, canExport = true, onDownloadCsr, onUploadCertificate, onRenewCsr, chainVariantsFor, relatedCertificateId, t }) {
   const [showExportModal, setShowExportModal] = useState(false)
   const btnBase = 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all duration-150'
 
@@ -603,6 +608,14 @@ function ActionBar({ onExport, hasPrivateKey, keyAlgorithm, canExportKey, entity
         <button onClick={onManagePins} className={cn(btnBase, 'text-text-secondary hover:text-accent-primary hover:bg-accent-primary-op10')}>
           <PushPin size={14} weight="duotone" />
           {t('templates.managePins', 'Manage Pins')}
+        </button>
+      )}
+
+      {/* Update certificate on token — CA whose signing key lives in a PKCS#11 slot */}
+      {onUploadTokenCert && (
+        <button onClick={onUploadTokenCert} className={cn(btnBase, 'text-text-secondary hover:text-accent-success hover:bg-accent-success-op10')}>
+          <Key size={14} weight="duotone" />
+          {t('cas.updateTokenCert', 'Update certificate on token')}
         </button>
       )}
 
