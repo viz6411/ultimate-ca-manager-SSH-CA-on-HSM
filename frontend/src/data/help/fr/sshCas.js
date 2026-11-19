@@ -80,7 +80,7 @@ export default {
           { label: 'Commande de rechargement', text: 'Exécutée seulement après un envoi qui a écrit la clé de l\'AC ou le certificat d\'hôte. Le compte cible doit exécuter cette commande avec sudo sans mot de passe ; laissez le champ vide si seule la KRL compte.' },
           { label: 'Clé d\'hôte', text: 'Pour un certificat d\'hôte, UCM lit la clé d\'hôte sur la cible elle-même (/etc/ssh, puis /usr/local/etc/ssh ; ed25519, ecdsa, rsa). Si UCM ne peut pas la lire, vous pouvez la coller, mais une clé que l\'hôte ne publie pas est refusée.' },
           { label: 'Vérifié à l\'enregistrement', text: 'L\'enregistrement teste la cible une fois, dans une seule session SSH : un fichier de test dans chaque chemin non vide, sudo pour la commande de rechargement, et la clé d\'hôte. Un refus nomme le champ concerné, et la boîte de dialogue affiche la raison sous ce champ.' },
-          { label: 'Retirer une association', text: 'Les fichiers déjà écrits par UCM restent sur l\'hôte et le journal d\'audit les nomme. Supprimer la cible conserve son certificat d\'hôte dans la KRL : un certificat déjà révoqué le reste.' },
+          { label: 'Retirer une association', text: 'Les fichiers déjà écrits par UCM restent sur l\'hôte et le journal d\'audit les nomme. Supprimer la cible conserve son certificat d\'hôte dans l\'inventaire : un certificat déjà révoqué le reste.' },
         ]
       },
     ],

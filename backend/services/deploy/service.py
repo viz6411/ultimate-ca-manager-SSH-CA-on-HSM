@@ -643,11 +643,14 @@ class DeployService:
     def requeue_krl_if_superseded(binding, generated_at, actor):
         """Queue the KRL push that a revocation during this delivery would have queued.
 
-        The KRL is generated when the delivery runs, so a revoke committed between that
-        generation and the row being recorded as delivered was coalesced into a delivery that
-        is already finished: the host keeps a KRL without that serial, the row says
-        'delivered', and 'KRL missing on N targets' counts it as delivered. Over-queueing an
-        idempotent KRL refresh is the cheap side of this race; losing a revocation is not.
+        The KRL is generated when the delivery runs, so a revoke committed while a delivery was
+        running was coalesced into a delivery that is already finished: the host keeps a KRL
+        without that serial, the row says 'delivered', and 'KRL missing on N targets' counts it
+        as delivered. The window is measured from the start of the delivery on the cluster clock
+        — wider than the delivery itself, which is deliberate: over-queueing an idempotent KRL
+        refresh is the cheap side of this race, losing a revocation is not. A node whose clock
+        lags the database by more than that window is not covered here; `-m ha` is where that
+        would be measured, and the next revocation or a Deploy now closes it.
         """
         from models.ssh import SSHCertificate
         try:

@@ -2113,7 +2113,7 @@ export const helpContent = {
           { label: 'Reload command', text: 'Runs only after a delivery that wrote the CA key or the host certificate. The target account needs password-less sudo for exactly that command; leave the field empty when only the KRL matters.' },
           { label: 'Host key', text: 'For a host certificate UCM reads the host key from the target itself (/etc/ssh, then /usr/local/etc/ssh; ed25519, ecdsa, rsa). If it cannot read the key you can paste it, but a key the host does not publish is refused.' },
           { label: 'Checked when you save', text: 'Saving tests the target once, in one SSH session: a probe file in every non-empty path, sudo for the reload command, and the host key. A refusal names the field it concerns, and the dialog shows the reason under it.' },
-          { label: 'Removing a binding', text: 'Files UCM already wrote stay on the host, and the audit log names them. Deleting the target keeps its host certificate in the KRL, so a certificate revoked earlier stays revoked.' },
+          { label: 'Removing a binding', text: 'Files UCM already wrote stay on the host, and the audit log names them. Deleting the target keeps its host certificate in the inventory, so a certificate revoked earlier stays revoked.' },
         ]
       },
     ],
