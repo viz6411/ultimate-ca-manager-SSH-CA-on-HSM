@@ -83,11 +83,14 @@ class _Host:
 
     PINNED = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIpinOfTheTestTarget000000000000000000'
 
-    def __init__(self, monkeypatch, publishes=(), sudo_ok=True, exec_ok=True, refuse=()):
+    def __init__(self, monkeypatch, publishes=(), sudo_ok=True, exec_ok=True, refuse=(),
+                 refuse_remove=()):
         self.publishes = list(publishes)
         self.sudo_ok, self.exec_ok = sudo_ok, exec_ok
         self.refuse = list(refuse)      # artefact paths whose write this target refuses
+        self.refuse_remove = list(refuse_remove)   # paths whose removal this target refuses
         self.pushed, self.removed = [], []
+        self.files = []                 # what is on the host right now, in the order written
         self.sudo_checks, self.key_reads, self.reloaded = [], [], []
 
         test = self
@@ -95,6 +98,10 @@ class _Host:
         class _Sftp:
             def remove(self, path):
                 test.removed.append(path)
+                if any(taken in path for taken in test.refuse_remove):
+                    raise OSError(f'Cannot remove {path}: Operation not permitted')
+                if path in test.files:
+                    test.files.remove(path)
 
             def close(self):
                 pass
@@ -116,6 +123,7 @@ class _Host:
                 if any(taken in path for taken in test.refuse):
                     raise ssh_mod.DeploySSHError(f'SFTP write to {path} failed: Permission denied')
                 test.pushed.append((path, content, mode))
+                test.files.append(path)
 
         def read_stdout(client, command):
             if command == SUDO_PROBE:
@@ -234,7 +242,8 @@ def _issued_host_certificate(auth_client, monkeypatch, descr):
 
 class TestReloadCommandIsOneCommand:
     """The reload command is handed to the target's shell verbatim, so a chained one is a way to
-    run anything on that host through a field whose whole job is "reload sshd"."""
+    run anything on that host through a field whose whole job is "reload sshd", and a
+    redirection through it is a way to write whatever that account can reach."""
 
     CHAINED = ['sudo systemctl reload sshd; sudo rm -rf /etc/ssh/ssh_ca_keys',
                'sudo systemctl reload sshd && echo reloaded',
@@ -244,7 +253,10 @@ class TestReloadCommandIsOneCommand:
                'sudo systemctl reload sshd\nsudo systemctl restart sshd',
                'sudo systemctl reload sshd\rsudo systemctl restart sshd',
                'sudo systemctl reload `id -u`',
-               'sudo systemctl reload $(echo sshd)']
+               'sudo systemctl reload $(echo sshd)',
+               'sudo systemctl reload sshd > /tmp/reload.log',
+               'sudo systemctl reload sshd >> /etc/ssh/ssh_ca_keys/ucm_hosts.pub',
+               'sudo systemctl reload sshd < /dev/null']
 
     @pytest.mark.parametrize('command', CHAINED)
     def test_a_chained_reload_command_is_refused_under_the_field_it_concerns(
@@ -359,6 +371,31 @@ class TestSaveTimeProbe:
         assert host.wrote() == [p + PROBE_SUFFIX for p in named]
         assert [content for _, content, _ in host.pushed] == [b''] * len(named)
         assert host.removed == [p + PROBE_SUFFIX for p in named]
+        assert host.key_reads == [] and host.sudo_checks == [] and host.reloaded == []
+
+    def test_a_probe_file_the_host_will_not_give_back_leaves_the_save_accepted(
+            self, app, auth_client, monkeypatch):
+        """The probe answered one question — can this account write here — and a removal the
+        host refuses does not change the answer. Refusing the save over it would hold a binding
+        hostage to a file that is not an artefact and not anyone's delivery."""
+        ca = _create_ssh_ca(auth_client, ca_type='user', descr=_name('Probe stuck CA'))
+        target = _target(auth_client)
+        payload = dict(_paths('stuck', host_cert=False), target_id=target['id'])
+        stuck = payload['krl_path']
+        host = _Host(monkeypatch, refuse_remove=[stuck])
+
+        assert_success(post_json(auth_client, f"/api/v2/ssh/cas/{ca['id']}/deploy-bindings", payload),
+                       status=201)
+        assert _binding(app, ca['id'], target['id']) is not None
+
+        named = [p for p in (payload['ca_pub_path'], payload['krl_path']) if p]
+        probes = [p + PROBE_SUFFIX for p in named]
+        # Every named path was still probed, and UCM still tried to take every probe file back
+        assert host.wrote() == probes and host.removed == probes
+        # The one this host refused to give back is the only thing left on it: a `.ucm-probe`,
+        # never an artefact path, so nothing sshd reads was touched by the save.
+        assert host.files == [stuck + PROBE_SUFFIX]
+        assert all(path not in host.files for path in named)
         assert host.key_reads == [] and host.sudo_checks == [] and host.reloaded == []
 
     def test_the_sudo_grant_is_probed_only_when_a_reload_command_is_set(

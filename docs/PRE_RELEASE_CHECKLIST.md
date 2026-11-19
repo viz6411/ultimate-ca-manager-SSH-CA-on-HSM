@@ -240,15 +240,17 @@ printf '@cert-authority ssh1.example.net ssh1 %s\n' '<host CA public key>' >> ~/
 - [ ] **ATT-13 — The reload command is one command, never a chained one**
   - Check: save a binding whose reload command is two commands joined by `&&`, then each
     of `;`, `||`, a single `|`, a trailing `&`, a command inside backticks, a command
-    inside `$( )`, and a command split by a newline. Then put a chained command into an
+    inside `$( )`, a command split by a newline, and a redirection of that command's own
+    output — `>` or `>>` — or of its input, `<`. Then put a chained command into an
     existing binding and save it.
   - Expected: each is refused with `422`, `details.fields.reload_command` and the key
     `sshDeploy.errors.reloadChained`, and the dialog puts that sentence on the reload
     field itself rather than only on a toast. No binding is created, and the refused edit
     leaves the stored command exactly as it was. A single command, with its own arguments
-    and its own `sudo` prefix, is accepted: this rule is about chaining, not about
-    shell-quoting a path. Automated: `TestReloadCommandIsOneCommand` in
-    `backend/tests/test_ssh_ca_deploy.py` and
+    and its own `sudo` prefix, is accepted: the rule is about chaining and redirection,
+    not about shell-quoting a path — it is a lexical check, so a `;` inside a quoted
+    argument is refused too, which is the safe side. Automated: `TestReloadCommandIsOneCommand`
+    in `backend/tests/test_ssh_ca_deploy.py` and
     `frontend/src/components/__tests__/SSHCaDeploySection.refusal.test.jsx`.
 
 ## 3. Permission probe at attach
