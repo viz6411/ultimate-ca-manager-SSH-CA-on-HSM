@@ -8,7 +8,7 @@ import logging
 from datetime import datetime, timezone, timedelta
 from flask import Blueprint, request, g, Response
 
-from auth.unified import require_auth
+from auth.unified import require_auth, has_permission
 from fips_mode import FipsRestricted
 from utils.response import success_response, error_response, created_response, no_content_response
 from utils.pagination import parse_request_pagination
@@ -22,7 +22,7 @@ from utils.datetime_utils import utc_now
 from utils.cert_status import (SSH_CERTIFICATE_STATUS_FILTERS,
                                normalize_status_filters,
                                unknown_status_message)
-from models import db
+from models import db, SSHCADeployBinding
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +38,20 @@ _MAX_OPT_VALUE_LEN = 1024
 _MAX_VALIDITY_SECONDS = 10 * 365 * 24 * 3600  # 10 years
 _VALID_CERT_TYPES = ('user', 'host')
 _VALID_KEY_TYPES = ('ed25519', 'rsa', 'ecdsa-p256', 'ecdsa-p384', 'ecdsa-p521')
+
+
+def _certificate_payload(cert, shared=None) -> dict:
+    """A certificate as this reader may see it.
+
+    Which deploy target a host certificate was signed for is deployment information: the
+    deployment block of the console is hidden from a reader who cannot read deployments, and
+    the certificate payload must not hand the same fact to them over the certificate route.
+    """
+    data = cert.to_dict(shared) if shared is not None else cert.to_dict()
+    if not has_permission('read:deploy', getattr(g, 'permissions', None) or []):
+        data['deploy_target_id'] = None
+        data['deploy_target_name'] = None
+    return data
 
 
 def _validate_ssh_sign_payload(data, *, require_pubkey):
@@ -198,7 +212,7 @@ def list_ssh_certificates():
     shared = SSHCertificate.shared_serials()
 
     return success_response(
-        data=[cert.to_dict(shared) for cert in pagination.items],
+        data=[_certificate_payload(cert, shared) for cert in pagination.items],
         meta={
             'total': pagination.total,
             'page': page,
@@ -216,7 +230,16 @@ def get_ssh_certificate(cert_id):
     if not cert:
         return error_response('SSH certificate not found', 404)
 
-    return success_response(data=cert.to_dict())
+    data = _certificate_payload(cert)
+    # Which file the host certificate of this target was written to lives on the
+    # binding, not on the certificate: the detail view is where that is worth one
+    # extra read, and the list of certificates is where it is not. The target fields
+    # are already null when this reader cannot read deployments, so this is skipped.
+    if data['deploy_target_id']:
+        binding = SSHCADeployBinding.query.filter_by(ssh_ca_id=cert.ssh_ca_id,
+                                                     target_id=cert.deploy_target_id).first()
+        data['deploy_target_path'] = binding.host_cert_path if binding else None
+    return success_response(data=data)
 
 
 @bp.route('/api/v2/ssh/certificates/import', methods=['POST'])
@@ -259,7 +282,7 @@ def import_ssh_certificate():
             pass
 
         return created_response(
-            data=cert.to_dict(),
+            data=_certificate_payload(cert),
             message='SSH certificate imported successfully'
         )
 
@@ -330,7 +353,7 @@ def sign_ssh_certificate():
             pass
 
         return created_response(
-            data=cert.to_dict(),
+            data=_certificate_payload(cert),
             message='SSH certificate issued successfully'
         )
 
@@ -400,7 +423,7 @@ def generate_ssh_certificate():
 
         return created_response(
             data={
-                **cert.to_dict(),
+                **_certificate_payload(cert),
                 'private_key': result['private_key'],
             },
             message='SSH certificate and key pair generated'
@@ -462,8 +485,20 @@ def revoke_ssh_certificate(cert_id):
         except Exception:
             pass
 
+        # The KRL every bound deploy target holds is out of date from this moment.
+        # ssh.cert.revoked is the durable queue's cue; the SSH CA deployment
+        # binding turns it into a KRL push, with no sshd reload anywhere.
+        try:
+            from services.events import event_bus
+            event_bus.emit('ssh.cert.revoked',
+                           {'certificate': {'id': cert.id, 'ssh_ca_id': cert.ssh_ca_id,
+                                            'key_id': cert.key_id, 'cert_type': cert.cert_type}},
+                           meta={'actor': username, 'reason': reason})
+        except Exception:
+            pass
+
         return success_response(
-            data={**cert.to_dict(), 'revoked_with': [o.id for o in others], 'revoked_by': entries},
+            data={**_certificate_payload(cert), 'revoked_with': [o.id for o in others], 'revoked_by': entries},
             message=message
         )
 
@@ -483,6 +518,11 @@ def delete_ssh_certificate(cert_id):
         return error_response('SSH certificate not found', 404)
 
     cert_name = cert.key_id
+    cert_ca_id = cert.ssh_ca_id
+    cert_type = cert.cert_type
+    # Only a revoked certificate was ever in the KRL: deleting a valid one changes
+    # no list, and UCM refuses to delete a valid unexpired one for that reason.
+    was_revoked = bool(cert.revoked)
     username = g.current_user.username if hasattr(g, 'current_user') else 'system'
 
     try:
@@ -503,6 +543,16 @@ def delete_ssh_certificate(cert_id):
             on_ssh_certificate_deleted(cert_id, cert_name, username)
         except Exception:
             pass
+
+        if was_revoked:
+            try:
+                from services.events import event_bus
+                event_bus.emit('ssh.cert.deleted',
+                               {'certificate': {'id': cert_id, 'ssh_ca_id': cert_ca_id,
+                                                'key_id': cert_name, 'cert_type': cert_type}},
+                               meta={'actor': username})
+            except Exception:
+                pass
 
         return no_content_response()
 

@@ -226,11 +226,26 @@ def push_files(client, files):
 
 def run_command(client, command: str) -> Tuple[int, str]:
     """Run the reload command. Returns (exit_status, stderr_tail)."""
+    exit_status, _, err = read_stdout(client, command)
+    return exit_status, err
+
+
+def read_stdout(client, command: str) -> Tuple[int, str, str]:
+    """Run *command* and return (exit_status, stdout_text, stderr_tail).
+
+    ``run_command`` throws stdout away, and reading something off the target —
+    its host public key, its sudo grant — is exactly what needs it. A target
+    whose sshd refuses exec (``internal-sftp``, a chroot) answers here as a
+    transport refusal, which the caller reports as such instead of as an
+    empty file.
+    """
     paramiko = _require_paramiko()
     try:
         _, stdout, stderr = client.exec_command(command, timeout=COMMAND_TIMEOUT_SECONDS)
         exit_status = stdout.channel.recv_exit_status()
+        # A public-key line is a few hundred bytes; six of them are nowhere near 64 KiB
+        out = stdout.read(65536).decode('utf-8', 'replace')
         err = stderr.read(4096).decode('utf-8', 'replace').strip()
-        return exit_status, err
+        return exit_status, out, err
     except (paramiko.SSHException, socket.timeout, OSError) as e:
-        raise DeploySSHError(f"Reload command failed to run: {e}")
+        raise DeploySSHError(f"Command failed to run on the target: {e}")

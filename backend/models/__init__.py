@@ -42,7 +42,9 @@ from models.key_recovery import KeyRecoveryRequest
 from models.revoked_serial import RevokedSerial
 from models.compromised_key import CompromisedKeyRecord
 from models.est_signer_cert import EstSignerCert
-from models.deploy import DeployTarget, DeployBinding, CRLDeployBinding, DeployDelivery
+from models.deploy import (
+    DeployTarget, DeployBinding, CRLDeployBinding, SSHCADeployBinding, DeployDelivery,
+)
 from models.cluster import ClusterCommand, ClusterMaintenance, ClusterNode, SchedulerRequest
 from models.encryption_key import EncryptionKey
 from models.websocket_relay import WebsocketRelayEvent
@@ -74,7 +76,7 @@ __all__ = [
     "KeyRecoveryRequest",
     "ADConnectorConfig", "WindowsEnrollmentProfile", "WindowsProfileTemplate",
     "RevokedSerial", "CompromisedKeyRecord", "EstSignerCert",
-    "DeployTarget", "DeployBinding", "CRLDeployBinding", "DeployDelivery",
+    "DeployTarget", "DeployBinding", "CRLDeployBinding", "SSHCADeployBinding", "DeployDelivery",
     "ClusterCommand", "ClusterMaintenance", "ClusterNode", "SchedulerRequest", "EncryptionKey", "WebsocketRelayEvent",
     "SharedFile", "BackupArchive", "BackupArchiveChunk", "SecondFactorFailure", "FileRemoval", "BackgroundJob",
 ]

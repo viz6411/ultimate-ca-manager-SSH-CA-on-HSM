@@ -117,6 +117,7 @@ GENERIC_SECTIONS = (
     'ca_cross_certificates',
     'deploy_bindings',
     'crl_deploy_bindings',
+    'ssh_ca_deploy_bindings',
     'intune_apps',
     'scep_profiles',
     'windows_enrollment_profiles',
@@ -546,6 +547,22 @@ class RestoreCoreMixin:
             from services.audit_service import AuditService
             for entry in aligned:
                 AuditService.log_action(username='system', **entry)
+
+        if self._ssh_aligned:
+            # align_revocations revokes by SQL, with no certificate event behind it, so every
+            # target bound to an SSH CA whose certificates it had to revoke keeps a KRL that is
+            # one revocation short and nothing would push it. Queue what those revocations would
+            # have queued. (A 2.254 upgrade cannot hit this: the pivot runs align_revocations
+            # before migration 301 creates the bindings table, so no binding exists yet.)
+            from models.ssh import SSHCertificate
+            from services.deploy.service import DeployService
+            revoked_cas = {row[0] for row in db.session.query(SSHCertificate.ssh_ca_id)
+                           .filter(SSHCertificate.id.in_(list(self._ssh_aligned))).distinct()
+                           if row[0] is not None}
+            for ca_id in sorted(revoked_cas):
+                DeployService.enqueue_ssh_ca_for_event(
+                    'ssh.cert.revoked', {'certificate': {'ssh_ca_id': ca_id}},
+                    meta={'actor': 'system'})
 
         if results.get('truststore_private_keys_removed'):
             from services.audit_service import AuditService

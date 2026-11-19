@@ -9,6 +9,7 @@ export function Textarea({
   error, 
   helperText,
   maxLength,
+  mono,   // the field itself is monospace: paths, key material, commands
   showCount = false,
   className,
   value = '',
@@ -40,6 +41,7 @@ export function Textarea({
           "disabled:opacity-50 disabled:cursor-not-allowed",
           "transition-all duration-200 resize-y",
           "hover:border-secondary-op50 hover:bg-bg-tertiary",
+          mono && "font-mono",
           error && "border-accent-danger focus:ring-accent-danger-op50",
           !error && "border-border"
         )}
@@ -47,14 +49,16 @@ export function Textarea({
         maxLength={maxLength}
         {...props}
         id={fieldId}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={error ? `${fieldId}-error` : helperText ? `${fieldId}-helper` : undefined}
       />
 
       {error && (
-        <p className="text-xs status-danger-text">{error}</p>
+        <p id={`${fieldId}-error`} role="status" className="text-xs status-danger-text">{error}</p>
       )}
       
       {helperText && !error && (
-        <p className="text-xs text-text-secondary">{helperText}</p>
+        <p id={`${fieldId}-helper`} className="text-xs text-text-secondary">{helperText}</p>
       )}
     </div>
   )

@@ -101,6 +101,36 @@ def test_an_upgraded_2254_database_has_the_schema_of_a_fresh_install(base, fresh
     assert unused == [], f'TOLERATED entries no difference uses any more: {unused}'
 
 
+def test_an_upgraded_database_can_insert_a_binding_without_naming_an_id(base):
+    """Migration 301 gives ``ssh_ca_deploy_bindings.id`` to the database, the way every
+    other table has it: an INSERT that names no id works after a 2.254 upgrade, on
+    PostgreSQL through the SERIAL the migration writes (a bare INTEGER has no sequence,
+    and the row would be refused)."""
+    assert base.upgrade()
+    base.run("INSERT INTO deploy_targets (id, name, host, username, port, private_key, "
+             "enabled, failure_count) VALUES (4242, 'upgraded target', 'host.example.test', "
+             "'ucm-deploy', 22, 'private key', TRUE, 0)")
+    def add_ca(row_id):
+        base.run("INSERT INTO ssh_cas (id, refid, descr, ca_type, public_key, private_key, "
+                 "key_type, fingerprint, serial_counter, allow_any_principal, "
+                 "allow_custom_key_id) VALUES (:id, :refid, 'upgraded SSH CA', 'user', "
+                 "'public key', 'private key', 'ed25519', 'SHA256:upgraded', 0, TRUE, FALSE)",
+                 {'id': row_id, 'refid': f'ref-upgraded-{row_id}'})
+
+    def add(name, ca_id):
+        base.run("INSERT INTO ssh_ca_deploy_bindings (target_id, ssh_ca_id, ca_pub_path, "
+                 "krl_path, enabled) VALUES (4242, :ca, :pub, :krl, TRUE)",
+                 {'ca': ca_id, 'pub': f'/etc/ssh/ssh_ca_keys/{name}.pub',
+                  'krl': f'/etc/ssh/ssh_ca_keys/{name}_revoked_keys'})
+        return base.run("SELECT id FROM ssh_ca_deploy_bindings WHERE ca_pub_path = :pub",
+                        {'pub': f'/etc/ssh/ssh_ca_keys/{name}.pub'})[0][0]
+
+    # Two bindings of one target, with two CAs: (target_id, ssh_ca_id) is unique
+    add_ca(4242), add_ca(4243)
+    first, second = add('first-binding', 4242), add('second-binding', 4243)
+    assert first is not None and second is not None and first != second
+
+
 def _filler(column, n):
     """Row n's value for a required column: distinct per row, so unique columns accept it."""
     from sqlalchemy import Boolean, DateTime, Integer
@@ -131,10 +161,17 @@ def test_a_fresh_sqlite_install_never_hands_a_deleted_id_out_again(table, tmp_pa
             assert add(3) > last
 
 
+def _fresh_registry():
+    """What a fresh 3.0 install records as applied: the 2.254 upgrade pivot and every
+    migration this release ships after it."""
+    import migration_runner
+    return migration_runner._list_migration_names()
+
+
 def test_the_registry_of_both_ends_names_the_upgrade(base, fresh):
     assert base.upgrade()
     assert '300_upgrade_from_2_254' in base.registry()
-    assert fresh.registry() == ['300_upgrade_from_2_254']
+    assert fresh.registry() == _fresh_registry()
 
 
 # --- Data steps on a populated 2.254 database ---------------------------------------------------
@@ -691,7 +728,7 @@ def test_a_fresh_install_cut_after_its_tables_is_never_taken_for_an_old_database
             migration_runner.build_fresh_schema(create_all)
         assert db.upgrade() is True, capsys.readouterr().out
         migration_runner.build_fresh_schema(lambda: fresh_metadata().create_all(db.engine))
-        assert db.registry() == ['300_upgrade_from_2_254']
+        assert db.registry() == _fresh_registry()
         assert db.upgrade() is True
 
 
@@ -704,7 +741,7 @@ def test_a_3_0_registry_without_tables_is_accepted_and_completed(dialect, tmp_pa
         assert db.tables() == {'_migrations'}
         assert db.upgrade() is True, capsys.readouterr().out
         migration_runner.build_fresh_schema(lambda: fresh_metadata().create_all(db.engine))
-        assert db.registry() == ['300_upgrade_from_2_254']
+        assert db.registry() == _fresh_registry()
         assert {'users', 'certificate_authorities'} <= db.tables()
         assert db.upgrade() is True
 
@@ -725,7 +762,7 @@ def test_a_fresh_install_that_cannot_record_its_registry_stops_then_starts_fresh
         monkeypatch.setattr(migration_runner, '_mark_applied', real)
         assert db.upgrade() is True, capsys.readouterr().out
         migration_runner.build_fresh_schema(lambda: fresh_metadata().create_all(db.engine))
-        assert db.registry() == ['300_upgrade_from_2_254']
+        assert db.registry() == _fresh_registry()
         assert {'users', 'certificate_authorities'} <= db.tables()
         assert db.upgrade() is True
 
@@ -742,7 +779,7 @@ def test_a_database_reset_keeps_its_3_0_registry_and_starts(fresh, capsys):
     before = fresh.registry()
     fresh_metadata().drop_all(fresh.engine)
     fresh_metadata().create_all(fresh.engine)
-    assert fresh.registry() == before == ['300_upgrade_from_2_254']
+    assert fresh.registry() == before == _fresh_registry()
     assert fresh.upgrade() is True, capsys.readouterr().out
 
 

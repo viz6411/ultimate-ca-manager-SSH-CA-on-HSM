@@ -53,6 +53,10 @@ NEEDS_REAL_MATERIAL: dict = {
         'it hangs off an SSH authority, whose exporter reads a real key, and '
         'the suite has no SSH authority factory'
     ),
+    'ssh_ca_deploy_bindings': (
+        'same parent as ssh_certificates: its ssh_ca_id needs an SSH authority, '
+        'and nothing here can invent one'
+    ),
 }
 
 # How many passes the seeder makes over the sections it has not built yet.
@@ -302,8 +306,12 @@ class TestEverySectionCanBeExercised:
 
     def test_almost_everything_is_actually_exercised(self, seeded):
         """The file is worth its cost only while it covers nearly all of the
-        manifest; a slow drift towards exemptions would empty it quietly."""
-        assert len(seeded['seeded']) >= len(manifest.SECTIONS) - 6
+        manifest; a slow drift towards exemptions would empty it quietly.
+
+        7 since migration 301: ssh_ca_deploy_bindings joins NEEDS_REAL_MATERIAL,
+        the section it hangs off an authority nothing here can build.
+        """
+        assert len(seeded['seeded']) >= len(manifest.SECTIONS) - 7
 
 
 class TestTheArchiveCarriesEverySection:

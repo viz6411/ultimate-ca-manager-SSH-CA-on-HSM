@@ -509,7 +509,10 @@ class SSHCAService:
     def delete_ca(ca_id):
         """Delete an SSH CA.
 
-        Blocks if certificates exist (user must delete them first).
+        Blocks if certificates exist (user must delete them first), and if the CA
+        is deployed anywhere: its public key and KRL are on other hosts right
+        now, and deleting the CA would leave them pointing at a key UCM no
+        longer has while revoking nothing.
         """
         ca = db.session.get(SSHCertificateAuthority, ca_id)
         if not ca:
@@ -521,6 +524,11 @@ class SSHCAService:
                 f"Cannot delete SSH CA: {cert_count} certificate(s) were issued by it. "
                 f"Delete them first."
             )
+
+        from services.deploy.ssh_ca import binding_blocker
+        blocked = binding_blocker(ca)
+        if blocked:
+            raise ValueError(blocked)
 
         ca_name = ca.descr
         try:

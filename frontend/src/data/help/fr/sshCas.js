@@ -71,6 +71,18 @@ export default {
           { label: 'Mise à niveau', text: 'À partir de 2.249, les AC existantes démarrent aussi avec l\'option décochée.' },
         ]
       },
+      {
+        title: 'Déploiement',
+        items: [
+          { label: 'Associer une cible', text: 'AC SSH › détail de l\'AC › « Déploiement » : une association relie une seule cible SSH existante (les cibles se créent dans Réglages › Déploiement). Une cible HTTP n\'est pas proposée : une AC SSH écrit des fichiers par SFTP.' },
+          { label: 'Ce qu\'UCM écrit', text: 'La clé publique de l\'AC, sa KRL et, pour une AC d\'hôte, le certificat d\'hôte qu\'UCM signe pour cette cible. Laissez un chemin vide pour ne pas écrire ce fichier ; les noms proposés reprennent les valeurs par défaut du script d\'installation.' },
+          { label: 'La révocation atteint l\'hôte', text: 'Chaque révocation renvoie la KRL vers toutes les cibles associées. sshd lit RevokedKeys à chaque authentification : un certificat révoqué cesse de fonctionner sans recharger sshd.' },
+          { label: 'Commande de rechargement', text: 'Exécutée seulement après un envoi qui a écrit la clé de l\'AC ou le certificat d\'hôte. Le compte cible doit exécuter cette commande avec sudo sans mot de passe ; laissez le champ vide si seule la KRL compte.' },
+          { label: 'Clé d\'hôte', text: 'Pour un certificat d\'hôte, UCM lit la clé d\'hôte sur la cible elle-même (/etc/ssh, puis /usr/local/etc/ssh ; ed25519, ecdsa, rsa). Si UCM ne peut pas la lire, vous pouvez la coller, mais une clé que l\'hôte ne publie pas est refusée.' },
+          { label: 'Vérifié à l\'enregistrement', text: 'L\'enregistrement teste la cible une fois, dans une seule session SSH : un fichier de test dans chaque chemin non vide, sudo pour la commande de rechargement, et la clé d\'hôte. Un refus nomme le champ concerné, et la boîte de dialogue affiche la raison sous ce champ.' },
+          { label: 'Retirer une association', text: 'Les fichiers déjà écrits par UCM restent sur l\'hôte et le journal d\'audit les nomme. Supprimer la cible conserve son certificat d\'hôte dans la KRL : un certificat déjà révoqué le reste.' },
+        ]
+      },
     ],
     tips: [
       'Utilisez des AC distinctes pour les certificats utilisateur et hôte : ne les mélangez jamais.',

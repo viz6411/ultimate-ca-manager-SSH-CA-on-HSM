@@ -9,14 +9,15 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   Key, Plus, Trash, PencilSimple, Download, Copy, Upload,
-  ShieldCheck, User, Clock, Fingerprint, Terminal, Check, WindowsLogo
+  ShieldCheck, User, Clock, Fingerprint, Terminal, Check, WindowsLogo, Warning
 } from '@phosphor-icons/react'
 import {
   ResponsiveLayout, ResponsiveDataTable, Badge, Button, Input, Select,
   FormModal, Modal, Textarea,
-  CompactSection, CompactGrid, CompactField, CompactHeader
+  CompactSection, CompactGrid, CompactField, CompactHeader, Tooltip
 } from '../components'
 import { sshCasService, hsmService } from '../services'
+import { SSHCaDeploySection } from '../components/deploy/SSHCaDeploySection'
 import { useNotification, useMobile } from '../contexts'
 import { usePermission, useClipboard, usePersistedState, useCRUDPage } from '../hooks'
 import { formatDate , downloadBlob, cn, extractData} from '../lib/utils'
@@ -48,6 +49,23 @@ function hsmSshKeyType(algorithm) {
   if (row?.group === GROUP_RSA) return 'rsa'
   if (row?.group === GROUP_NIST) return `ecdsa-p${row.bits}`
   return null
+}
+
+// A CA whose newest KRL has not reached every target it is deployed to: a revoked
+// certificate still works there until the next push, and the CA list is where an
+// admin sees it. The same sentence is repeated inside the CA's deployment block.
+function KrlUndeliveredBadge({ ca, t }) {
+  const count = ca.krl_undelivered_targets || 0
+  if (!count) return null
+  return (
+    <Tooltip content={t('sshDeploy.krlUndeliveredTip')}>
+      <span tabIndex={0} className="inline-flex rounded-full focus-ring">
+        <Badge variant="warning" size="sm" icon={Warning}>
+          {t('sshDeploy.krlUndelivered', { count })}
+        </Badge>
+      </span>
+    </Tooltip>
+  )
 }
 
 export default function SSHCAsPage() {
@@ -271,6 +289,7 @@ export default function SSHCAsPage() {
               {isUser ? <User size={14} weight="duotone" /> : <ShieldCheck size={14} weight="duotone" />}
             </div>
             <span className="font-medium truncate">{val || t('common.unnamed')}</span>
+            <KrlUndeliveredBadge ca={row} t={t} />
           </div>
         )
       },
@@ -285,6 +304,7 @@ export default function SSHCAsPage() {
                 {isUser ? <User size={14} weight="duotone" /> : <ShieldCheck size={14} weight="duotone" />}
               </div>
               <span className="font-medium truncate">{val || t('common.unnamed')}</span>
+              <KrlUndeliveredBadge ca={row} t={t} />
             </div>
             <Badge variant={isUser ? 'teal' : 'violet'} size="sm" dot>
               {isUser ? t('sshCas.typeUser') : t('sshCas.typeHost')}
@@ -562,6 +582,9 @@ export default function SSHCAsPage() {
           </div>
         </CompactSection>
       )}
+
+      {/* Deployment: which targets this CA is written on, and what is queued there */}
+      <SSHCaDeploySection ca={selectedCA} onChanged={loadData} />
     </div>
   )
 

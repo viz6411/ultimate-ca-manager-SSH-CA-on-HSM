@@ -15,7 +15,7 @@ from datetime import timedelta
 
 from models import (
     db, CA, Certificate, CRLMetadata, DeployTarget, DeployBinding,
-    CRLDeployBinding, DeployDelivery,
+    CRLDeployBinding, SSHCADeployBinding, DeployDelivery,
 )
 from security.encryption import encrypt_text, decrypt_text
 # next_attempt_at is due time and claim lease alike: one clock for every node
@@ -24,6 +24,7 @@ from utils.export_options import json_boolean
 from utils.key_codec import load_pem_bytes
 from services.deploy import ssh as deploy_ssh
 from services.deploy import http as deploy_http
+from services.deploy import ssh_ca as ssh_ca_deploy
 from fips_mode import FipsRestricted
 from services.deploy.ssh import DeploySSHError
 from services.deploy.http import DeployHTTPError
@@ -32,6 +33,10 @@ logger = logging.getLogger(__name__)
 
 DEPLOY_EVENTS = ('certificate.issued', 'certificate.renewed')
 CRL_DEPLOY_EVENT = 'crl.updated'
+# An SSH certificate of a bound CA changed: its CA's KRL is now different, and
+# every target bound to that CA needs the new one. A delete counts because a
+# revoked certificate that expired and was deleted was still in the KRL.
+SSH_CERT_EVENTS = ('ssh.cert.revoked', 'ssh.cert.deleted')
 
 # File modes on the target: the key is operator-readable only.
 MODE_PUBLIC = 0o644
@@ -229,12 +234,13 @@ class DeployService:
         now = cluster_utc_now()
         binding_type = delivery.binding_type or DeployDelivery.BINDING_CERTIFICATE
         if binding_type not in (
-                DeployDelivery.BINDING_CERTIFICATE, DeployDelivery.BINDING_CRL):
+                DeployDelivery.BINDING_CERTIFICATE, DeployDelivery.BINDING_CRL,
+                DeployDelivery.BINDING_SSH_CA):
             delivery.status = DeployDelivery.STATUS_FAILED
             delivery.last_error = f'Unknown binding type: {binding_type}'
             return False
-        binding_model = (CRLDeployBinding
-                         if binding_type == DeployDelivery.BINDING_CRL
+        binding_model = (CRLDeployBinding if binding_type == DeployDelivery.BINDING_CRL
+                         else SSHCADeployBinding if binding_type == DeployDelivery.BINDING_SSH_CA
                          else DeployBinding)
         binding = db.session.get(binding_model, delivery.binding_id)
         if not binding or not binding.enabled:
@@ -260,6 +266,11 @@ class DeployService:
                 DeployService._record_failure(
                     delivery, target, 'CRL deployment requires an SSH target', now, permanent=True)
                 return False
+            if binding_type == DeployDelivery.BINDING_SSH_CA:
+                DeployService._record_failure(
+                    delivery, target, 'SSH CA deployment requires an SSH target', now,
+                    permanent=True)
+                return False
             try:
                 variables = DeployService.resolve_variables(
                     binding, certificate, event=delivery.event_type or 'manual')
@@ -277,10 +288,19 @@ class DeployService:
             return DeployService._record_success(delivery, target, binding_type, binding,
                                                  certificate, detail, now)
 
+        needs_reload = True
         try:
-            files = (DeployService.resolve_crl_files(binding)
-                     if binding_type == DeployDelivery.BINDING_CRL
-                     else DeployService.resolve_files(binding, certificate))
+            if binding_type == DeployDelivery.BINDING_SSH_CA:
+                # The actor of the delivery is the actor of the host certificate this delivery
+                # signs: an audit that says 'system' when an admin pressed Deploy now is a
+                # certificate nobody can trace back to a person.
+                files, needs_reload = ssh_ca_deploy.resolve_files(
+                    binding, delivery.event_type or 'manual',
+                    actor=delivery.triggered_by or 'system')
+            elif binding_type == DeployDelivery.BINDING_CRL:
+                files = DeployService.resolve_crl_files(binding)
+            else:
+                files = DeployService.resolve_files(binding, certificate)
         except ValueError as e:
             DeployService._record_failure(delivery, target, str(e), now, permanent=True)
             return False
@@ -295,7 +315,12 @@ class DeployService:
                 logger.info(f"Deploy target '{target.name}': pinned host key on first connect")
             deploy_ssh.push_files(client, files)
             detail['pushed'] = [path for path, _, _ in files]
-            if binding.reload_command:
+            # An SSH CA binding writes its command only when the delivery put
+            # something there that changes what sshd trusts — the CA public key
+            # or the host certificate. A KRL refresh runs nothing at all: sshd
+            # re-reads RevokedKeys on every authentication attempt, which is how
+            # a revoke reaches every bound host without touching sshd.
+            if binding.reload_command and needs_reload:
                 exit_status, stderr_tail = deploy_ssh.run_command(
                     client, binding.reload_command)
                 detail['reload_exit'] = exit_status
@@ -324,8 +349,11 @@ class DeployService:
                     client.close()
                 except Exception:
                     pass
-        return DeployService._record_success(delivery, target, binding_type, binding,
-                                             certificate, detail, now)
+        recorded = DeployService._record_success(delivery, target, binding_type, binding,
+                                                 certificate, detail, now)
+        if recorded and binding_type == DeployDelivery.BINDING_SSH_CA and binding.krl_path:
+            DeployService.requeue_krl_if_superseded(binding, now, delivery.triggered_by)
+        return recorded
 
     @staticmethod
     def _record_success(delivery, target, binding_type, binding, certificate, detail, now) -> bool:
@@ -350,8 +378,7 @@ class DeployService:
             resource_id=str(target.id),
             resource_name=target.name,
             details=(
-                ((f"Deployed CRL for {binding.ca.descr}" if binding_type == DeployDelivery.BINDING_CRL
-                  else f"Deployed certificate {certificate.descr or certificate.refid}") + ' ')
+                (DeployService._audit_subject(binding_type, binding, certificate) + ' ')
                 + f"to {target.name} ("
                 + (f"HTTP {detail.get('status')} {detail.get('method')} {detail.get('url')}"
                    if target.is_http else ', '.join(detail.get('pushed', [])))
@@ -365,6 +392,18 @@ class DeployService:
             success=recorded,
         )
         return recorded
+
+    @staticmethod
+    def _audit_subject(binding_type, binding, certificate) -> str:
+        """What the audit calls the thing this delivery pushed. An SSH CA binding
+        pushes its CA's own artefacts, so its audit names the CA, not a
+        certificate — the host certificate it may have signed is in the pushed
+        paths."""
+        if binding_type == DeployDelivery.BINDING_CRL:
+            return f"Deployed CRL for {binding.ca.descr}"
+        if binding_type == DeployDelivery.BINDING_SSH_CA:
+            return f"Deployed SSH CA artefacts for {binding.ssh_ca.descr}"
+        return f"Deployed certificate {certificate.descr or certificate.refid}"
 
     @staticmethod
     def _record_failure(delivery, target, error, now, permanent=False, detail=None):
@@ -527,6 +566,117 @@ class DeployService:
             logger.error(f"Failed to queue CRL deploy deliveries: {e}")
         finally:
             session.expire_on_commit = prev_expire
+
+    @staticmethod
+    def enqueue_ssh_ca_for_event(event_type: str, payload: dict,
+                                 ca_refid: str = None, meta: dict = None):
+        """Queue the KRL refresh a revoked or deleted SSH certificate causes.
+
+        Coalesced exactly like the CRL work: the KRL is regenerated from the
+        database when the delivery runs, so one pending row already carries every
+        revocation made while a target was down. A revoke is global for a CA, so
+        every enabled binding of that CA is refreshed, and a binding with no
+        krl_path — nothing to refresh — is not queued at all.
+        """
+        if event_type not in SSH_CERT_EVENTS:
+            return
+        ca_id = ((payload or {}).get('certificate') or {}).get('ssh_ca_id')
+        if not ca_id:
+            return
+        try:
+            bindings = [b for b in SSHCADeployBinding.query
+                        .filter_by(ssh_ca_id=ca_id, enabled=True)
+                        .join(DeployTarget)
+                        .filter(DeployTarget.enabled == True)  # noqa: E712
+                        .all() if b.krl_path]
+        except Exception as e:
+            logger.error(f"SSH CA deploy enqueue skipped ({event_type}): {e}")
+            return
+        if not bindings:
+            return
+
+        now = cluster_utc_now()
+        actor = (meta or {}).get('actor') or 'system'
+        for binding in bindings:
+            pending = DeployDelivery.query.filter_by(
+                binding_id=binding.id,
+                binding_type=DeployDelivery.BINDING_SSH_CA,
+                status=DeployDelivery.STATUS_PENDING,
+            ).first()
+            if pending:
+                # A revoke must not cancel a push that still owes this host its CA key or
+                # its host certificate: the pending row keeps the wider job, because a full
+                # push writes the KRL too. Narrowing it here would leave TrustedUserCAKeys
+                # and HostCertificate pointing at files UCM never wrote, with the delivery
+                # reporting 'delivered' and no error anywhere.
+                if not (event_type in ssh_ca_deploy.KRL_ONLY_EVENTS
+                        and pending.event_type in ssh_ca_deploy.FULL_EVENTS):
+                    pending.event_type = event_type
+                pending.next_attempt_at = now
+                pending.triggered_by = actor
+                pending.attempts = 0
+                pending.last_error = None
+                continue
+            db.session.add(DeployDelivery(
+                binding_id=binding.id,
+                binding_type=DeployDelivery.BINDING_SSH_CA,
+                event_type=event_type,
+                status=DeployDelivery.STATUS_PENDING,
+                next_attempt_at=now,
+                max_attempts=DeployService.DEFAULT_MAX_ATTEMPTS,
+                triggered_by=actor,
+            ))
+        session = db.session()
+        prev_expire = session.expire_on_commit
+        try:
+            session.expire_on_commit = False
+            db.session.commit()
+            logger.info(f"Deploy: queued {len(bindings)} SSH CA KRL delivery(ies) "
+                        f"for CA {ca_id} after {event_type}")
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Failed to queue SSH CA KRL deliveries: {e}")
+        finally:
+            session.expire_on_commit = prev_expire
+
+    @staticmethod
+    def requeue_krl_if_superseded(binding, generated_at, actor):
+        """Queue the KRL push that a revocation during this delivery would have queued.
+
+        The KRL is generated when the delivery runs, so a revoke committed between that
+        generation and the row being recorded as delivered was coalesced into a delivery that
+        is already finished: the host keeps a KRL without that serial, the row says
+        'delivered', and 'KRL missing on N targets' counts it as delivered. Over-queueing an
+        idempotent KRL refresh is the cheap side of this race; losing a revocation is not.
+        """
+        from models.ssh import SSHCertificate
+        try:
+            superseded = (db.session.query(SSHCertificate.id)
+                          .filter(SSHCertificate.ssh_ca_id == binding.ssh_ca_id,
+                                  SSHCertificate.revoked_at.isnot(None),
+                                  SSHCertificate.revoked_at > generated_at).first())
+            if superseded is None:
+                return None
+            pending = DeployDelivery.query.filter_by(
+                binding_id=binding.id, binding_type=DeployDelivery.BINDING_SSH_CA,
+                status=DeployDelivery.STATUS_PENDING).first()
+            if pending:
+                return pending
+            delivery = DeployDelivery(
+                binding_id=binding.id, binding_type=DeployDelivery.BINDING_SSH_CA,
+                event_type='ssh.cert.revoked', status=DeployDelivery.STATUS_PENDING,
+                next_attempt_at=cluster_utc_now(), max_attempts=DeployService.DEFAULT_MAX_ATTEMPTS,
+                triggered_by=actor or 'system')
+            db.session.add(delivery)
+            db.session.commit()
+            logger.info(f"Deploy: SSH CA binding {binding.id} re-queued its KRL push: a "
+                        f"certificate of that CA was revoked while the push was running")
+            return delivery
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Deploy: could not re-queue the KRL push for SSH CA binding "
+                         f"{binding.id}: {e}")
+            return None
 
     @staticmethod
     def process_pending_deliveries(limit: int = 20) -> dict:
@@ -878,6 +1028,28 @@ class DeployService:
         return delivery
 
     @staticmethod
+    def enqueue_initial_ssh_ca_push(binding: SSHCADeployBinding, actor: str = 'system'):
+        """Queue the first artefact push of a fresh SSH CA binding.
+
+        Same reason as the CRL one: a binding is attached to a CA that already
+        exists, so no later event would ever match it — without this the first
+        deployment would always need a manual Deploy now.
+        """
+        if not binding.enabled or not binding.target or not binding.target.enabled:
+            return None
+        delivery = DeployDelivery(
+            binding_id=binding.id,
+            binding_type=DeployDelivery.BINDING_SSH_CA,
+            event_type='initial',
+            status=DeployDelivery.STATUS_PENDING,
+            next_attempt_at=cluster_utc_now(),
+            max_attempts=DeployService.DEFAULT_MAX_ATTEMPTS,
+            triggered_by=actor,
+        )
+        db.session.add(delivery)
+        return delivery
+
+    @staticmethod
     def enqueue_binding_update(binding, binding_type: str, actor: str = 'system'):
         """Make a saved binding change take effect without waiting for the
         previous retry backoff or another certificate/CRL event.
@@ -887,7 +1059,8 @@ class DeployService:
         appended. The caller commits this together with the binding update.
         """
         if binding_type not in (
-                DeployDelivery.BINDING_CERTIFICATE, DeployDelivery.BINDING_CRL):
+                DeployDelivery.BINDING_CERTIFICATE, DeployDelivery.BINDING_CRL,
+                DeployDelivery.BINDING_SSH_CA):
             raise ValueError(f'Unknown binding type: {binding_type}')
         if not binding.enabled or not binding.target or not binding.target.enabled:
             return None
@@ -949,5 +1122,7 @@ def _register_bus_subscriber():
     for event in DEPLOY_EVENTS:
         event_bus.subscribe(event, DeployService.enqueue_for_event)
     event_bus.subscribe(CRL_DEPLOY_EVENT, DeployService.enqueue_crl_for_event)
+    for event in SSH_CERT_EVENTS:
+        event_bus.subscribe(event, DeployService.enqueue_ssh_ca_for_event)
     _register_bus_subscriber._done = True
     logger.info("Registered deploy-hook event-bus subscriber")

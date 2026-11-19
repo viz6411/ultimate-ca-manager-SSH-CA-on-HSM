@@ -252,6 +252,7 @@ SOFT_LINKS = (
     ('webhook_deliveries', 'endpoint_id', 'webhook_endpoints', 'id'),
     ('deploy_deliveries', 'binding_id', 'deploy_bindings', 'id'),
     ('deploy_deliveries', 'binding_id', 'crl_deploy_bindings', 'id'),
+    ('deploy_deliveries', 'binding_id', 'ssh_ca_deploy_bindings', 'id'),
 )
 
 # An optional link the schema never enforced is emptied wherever it lives.
@@ -261,6 +262,7 @@ _SOFT_COLUMNS = {(table, column) for table, column, _target, _key in SOFT_LINKS}
 _SOFT_SCOPE = {
     ('deploy_deliveries', 'binding_id', 'deploy_bindings'): ('binding_type', 'certificate'),
     ('deploy_deliveries', 'binding_id', 'crl_deploy_bindings'): ('binding_type', 'crl'),
+    ('deploy_deliveries', 'binding_id', 'ssh_ca_deploy_bindings'): ('binding_type', 'ssh_ca'),
 }
 
 

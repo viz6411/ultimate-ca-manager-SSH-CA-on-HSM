@@ -603,6 +603,9 @@ def _seed_source():
             key_type='ed25519', fingerprint=f'SHA256:xinst{suffix}')
         for suffix in 'ab']
     ssh_authorities[1].owner_group_id = groups[1].id
+    # The one carrying certificates is a host authority: its certificate is the
+    # host certificate of a deploy target, which is what a binding signs there.
+    ssh_authorities[1].ca_type = 'host'
     # An authority whose private key never left the token: only its hsm_keys
     # link travels, and the restore must point it at the row of the new install
     ssh_authorities[0].key_source = 'hsm'
@@ -610,12 +613,14 @@ def _seed_source():
     ssh_authorities[0].hsm_key_id = hsm_keys[0].id
     db.session.flush()
 
-    add('ssh_certificates', refid='xinst-sshcert', ssh_ca_id=ssh_authorities[1].id,
-        cert_type='user', key_id='xinst-key-id', public_key='ssh-ed25519 AAAA xinst',
-        certificate='ssh-ed25519-cert-v01@openssh.com AAAA', principals='["xinst"]',
+    ssh_certificates = [add('ssh_certificates', refid='xinst-sshcert',
+        ssh_ca_id=ssh_authorities[1].id,
+        cert_type='host', key_id='xinst-key-id', public_key='ssh-ed25519 AAAA xinst',
+        certificate='ssh-ed25519-cert-v01@openssh.com AAAA',
+        principals='["xinst.example.test"]',
         serial=17, valid_from=now, valid_to=now + timedelta(days=30),
         key_type='ed25519', fingerprint='SHA256:xinstcert',
-        owner_group_id=groups[1].id)
+        owner_group_id=groups[1].id)]
 
     microsoft = [add('microsoft_cas', name=f'xinst-msca-{suffix}',
                      server=f'ca-{suffix}.example.test') for suffix in 'ab']
@@ -655,6 +660,15 @@ def _seed_source():
         ca_id=authorities[1].id, crl_path='/etc/ucm/xinst.crl',
         format='pem', include_parent_crls=True,
         reload_command='systemctl reload nginx')
+    add('ssh_ca_deploy_bindings', target_id=deploy_targets[1].id,
+        ssh_ca_id=ssh_authorities[1].id,
+        ca_pub_path='/etc/ssh/ssh_ca_keys/xinst.pub',
+        krl_path='/etc/ssh/ssh_ca_keys/xinst_revoked_keys',
+        host_cert_path='/etc/ssh/ssh_ca_keys/xinst_host_key-cert.pub',
+        principals='["xinst.example.test"]', validity=86400,
+        reload_command='systemctl reload sshd')
+    # A host certificate remembers the server it was signed for
+    ssh_certificates[0].deploy_target_id = deploy_targets[1].id
 
     scan_profiles = [add('scan_profiles', name=f'xinst-scan-{suffix}')
                      for suffix in 'ab']
@@ -778,7 +792,8 @@ RESTORABLE_SECTIONS = tuple(
         # the sections it points at, so they are ordinary sections of the
         # round trip like any other.
         'role_permissions', 'group_members', 'user_sso_identities', 'webauthn_credentials',
-        'deploy_bindings', 'crl_deploy_bindings', 'ca_template_pins',
+        'deploy_bindings', 'crl_deploy_bindings', 'ssh_ca_deploy_bindings',
+        'ca_template_pins',
         'ca_cross_certificates',
         'key_recovery_requests',
     ) if name not in ABORTS_THE_RESTORE

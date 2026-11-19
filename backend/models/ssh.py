@@ -193,6 +193,14 @@ class SSHCertificate(db.Model if db else object):
 
     # FK to SSH CA
     ssh_ca_id = db.Column(db.Integer, db.ForeignKey('ssh_cas.id'), nullable=False, index=True)
+    # Set when UCM issued this certificate for a deploy target (an SSH CA deployment
+    # binding signed a host certificate for that server). It is what a later release
+    # needs to reissue and deliver automatically; deleting the deploy target clears
+    # it and leaves the certificate itself alone.
+    deploy_target_id = db.Column(db.Integer, db.ForeignKey('deploy_targets.id'),
+                                 nullable=True, index=True)
+    deploy_target = db.relationship('DeployTarget',
+                                    backref=db.backref('ssh_certificates', lazy='dynamic'))
 
     # Certificate type: 'user' (1) or 'host' (2)
     cert_type = db.Column(db.String(10), nullable=False, index=True)
@@ -322,6 +330,8 @@ class SSHCertificate(db.Model if db else object):
             'descr': self.descr,
             'ssh_ca_id': self.ssh_ca_id,
             'ca_name': self.ca.descr if self.ca else None,
+            'deploy_target_id': self.deploy_target_id,
+            'deploy_target_name': self.deploy_target.name if self.deploy_target else None,
             'cert_type': self.cert_type,
             'key_id': self.key_id,
             'public_key': self.public_key,

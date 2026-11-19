@@ -248,6 +248,137 @@ class CRLDeployBinding(db.Model):
         return data
 
 
+class SSHCADeployBinding(db.Model):
+    """Attach an SSH CA to an existing SSH deploy target.
+
+    One row says what UCM writes on that host and how it gets there: where the
+    CA's public key, the KRL and the host certificate live, with what parameters
+    a host certificate is signed, and which command runs after a write that
+    changes what sshd trusts. The KRL needs no command: sshd re-reads
+    ``RevokedKeys`` on every authentication attempt.
+
+    Like the CRL binding it is a CA-to-host relation, not a certificate-to-host
+    one: the artifacts it writes are the CA's, and a host certificate is signed
+    for the target, not attached to it afterwards.
+    """
+    __tablename__ = 'ssh_ca_deploy_bindings'
+    __table_args__ = (
+        db.UniqueConstraint('target_id', 'ssh_ca_id', name='uq_ssh_ca_deploy_binding'),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    target_id = db.Column(
+        db.Integer, db.ForeignKey('deploy_targets.id'), nullable=False, index=True)
+    ssh_ca_id = db.Column(
+        db.Integer, db.ForeignKey('ssh_cas.id'), nullable=False, index=True)
+    # Destination paths on the target; NULL = don't write that file
+    ca_pub_path = db.Column(db.String(512))
+    krl_path = db.Column(db.String(512))
+    host_cert_path = db.Column(db.String(512))
+    # Issuance parameters of the host certificate (host CAs only). NULL validity
+    # means the CA's own default_ttl; principals stay exact names, never patterns.
+    validity = db.Column(db.Integer)
+    principals = db.Column(db.Text)
+    # Only honoured when the CA has allow_custom_key_id; NULL = the CA names it
+    key_id_template = db.Column(db.String(512))
+    # The host public key UCM signs. Normally read from the target itself; kept
+    # here when the operator pasted it because the target runs exec_command off.
+    host_public_key = db.Column(db.Text)
+    # Runs only on deliveries that wrote the CA key or the host certificate
+    reload_command = db.Column(db.String(512))
+    enabled = db.Column(db.Boolean, nullable=False, default=True)
+
+    created_at = db.Column(db.DateTime, default=utc_now)
+    created_by = db.Column(db.String(80))
+
+    target = db.relationship(
+        'DeployTarget', backref=db.backref('ssh_ca_bindings', lazy='dynamic'))
+    ssh_ca = db.relationship(
+        'SSHCertificateAuthority', backref=db.backref('deploy_bindings', lazy='dynamic'))
+
+    def get_principals(self):
+        if not self.principals:
+            return []
+        try:
+            return json.loads(self.principals)
+        except (json.JSONDecodeError, TypeError):
+            return []
+
+    def set_principals(self, principals):
+        self.principals = json.dumps(principals) if principals else None
+
+    def current_host_certificate(self):
+        """The newest host certificate UCM issued for this target with this CA."""
+        from models.ssh import SSHCertificate
+        return (SSHCertificate.query
+                .filter_by(ssh_ca_id=self.ssh_ca_id, deploy_target_id=self.target_id,
+                           cert_type='host')
+                .order_by(SSHCertificate.id.desc()).first())
+
+    @staticmethod
+    def delivery_summary():
+        """{ca_id: {'targets': n, 'krl_undelivered': n}} for every SSH CA with bindings.
+
+        Two queries for the whole installation, so the CA list needs no per-CA
+        request: a bound target counts as missing its KRL when its newest
+        delivery is not delivered (or there is none at all).
+        """
+        from sqlalchemy import func
+        latest = (db.session.query(DeployDelivery.binding_id,
+                                   func.max(DeployDelivery.id).label('last_id'))
+                  .filter(DeployDelivery.binding_type == DeployDelivery.BINDING_SSH_CA)
+                  .group_by(DeployDelivery.binding_id).subquery())
+        rows = (db.session.query(SSHCADeployBinding.ssh_ca_id, SSHCADeployBinding.krl_path,
+                                 DeployDelivery.status)
+                .outerjoin(latest, latest.c.binding_id == SSHCADeployBinding.id)
+                .outerjoin(DeployDelivery, DeployDelivery.id == latest.c.last_id)
+                .all())
+        summary = {}
+        for ca_id, krl_path, status in rows:
+            entry = summary.setdefault(ca_id, {'targets': 0, 'krl_undelivered': 0})
+            entry['targets'] += 1
+            if krl_path and status != DeployDelivery.STATUS_DELIVERED:
+                entry['krl_undelivered'] += 1
+        return summary
+
+    def to_dict(self, include_target=True):
+        certificate = self.current_host_certificate()
+        data = {
+            'id': self.id,
+            'target_id': self.target_id,
+            'ssh_ca_id': self.ssh_ca_id,
+            'ca_pub_path': self.ca_pub_path,
+            'krl_path': self.krl_path,
+            'host_cert_path': self.host_cert_path,
+            'validity': self.validity,
+            'principals': self.get_principals(),
+            'key_id_template': self.key_id_template,
+            'host_public_key': self.host_public_key,
+            'reload_command': self.reload_command,
+            'enabled': self.enabled,
+            'created_at': utc_isoformat(self.created_at),
+            'created_by': self.created_by,
+            # The UI reports an expired or missing host certificate; it offers no
+            # reissue, because reissuing is not part of this release
+            'host_certificate': None if certificate is None else {
+                'id': certificate.id,
+                'refid': certificate.refid,
+                'key_id': certificate.key_id,
+                'status': certificate.status,
+                'valid_to': utc_isoformat(certificate.valid_to),
+            },
+        }
+        if self.ssh_ca:
+            data['ca_name'] = self.ssh_ca.descr
+            data['ca_refid'] = self.ssh_ca.refid
+            data['ca_type'] = self.ssh_ca.ca_type
+        if include_target and self.target:
+            data['target_name'] = self.target.name
+            data['target_host'] = self.target.host
+            data['target_enabled'] = self.target.enabled
+        return data
+
+
 class DeployDelivery(db.Model):
     """Durable deploy queue — same model as webhook_deliveries: pending rows
     are drained by a scheduler task with retry/backoff."""
@@ -259,6 +390,10 @@ class DeployDelivery(db.Model):
 
     BINDING_CERTIFICATE = 'certificate'
     BINDING_CRL = 'crl'
+    # An SSH CA binding writes the CA's own artifacts (public key, KRL, host
+    # certificate signed for this target); its binding_id reads
+    # ssh_ca_deploy_bindings.id.
+    BINDING_SSH_CA = 'ssh_ca'
 
     id = db.Column(db.Integer, primary_key=True)
     # Logical reference to deploy_bindings.id (no DB-level FK so delivery

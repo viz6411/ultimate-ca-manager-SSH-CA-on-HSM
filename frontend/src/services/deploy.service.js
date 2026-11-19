@@ -63,6 +63,24 @@ export const deployService = {
     return apiClient.post(`/deploy/crl-bindings/${bindingId}/deploy`)
   },
 
+  // SSH CA bindings: what UCM writes on the target is the CA's own — its public
+  // key, its KRL and the host certificate it signs for that target
+  async getSSHBindings(caId) {
+    return apiClient.get(`/ssh/cas/${caId}/deploy-bindings`)
+  },
+  async createSSHBinding(caId, data) {
+    return apiClient.post(`/ssh/cas/${caId}/deploy-bindings`, data)
+  },
+  async updateSSHBinding(caId, bindingId, data) {
+    return apiClient.patch(`/ssh/cas/${caId}/deploy-bindings/${bindingId}`, data)
+  },
+  async deleteSSHBinding(caId, bindingId) {
+    return apiClient.delete(`/ssh/cas/${caId}/deploy-bindings/${bindingId}`)
+  },
+  async deploySSHNow(caId, bindingId) {
+    return apiClient.post(`/ssh/cas/${caId}/deploy-bindings/${bindingId}/deploy`)
+  },
+
   // Deliveries
   async getDeliveries(params = {}) {
     return apiClient.get(`/deploy/deliveries${buildQueryString(params)}`)

@@ -64,6 +64,8 @@ tests/test_migration_166*.py
 tests/test_migration_168*.py
 tests/test_ssh_serial_counter_matrix.py
 tests/test_ssh_serial_unique.py
+# The SSH CA deployment bindings must be exercised against a real PostgreSQL too (migration 301 serial id)
+tests/test_ssh_ca_deploy.py
 tests/test_restore_tsa_ca_signer.py
 tests/test_upgrade_from_2_254.py
 tests/test_major_upgrade_guard.py

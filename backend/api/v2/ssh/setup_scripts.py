@@ -6,11 +6,19 @@ from .setup_scripts_win import _user_ca_script_windows, _host_ca_script_windows
 
 
 def _generate_setup_script(ca, pub_key, ca_type, hostname, platform='unix'):
-    """Build a shell or PowerShell script for SSH CA trust configuration."""
+    """Build a shell or PowerShell script for SSH CA trust configuration.
+
+    The paths come from the same helper the deploy bindings start from, so a
+    script run by hand and a UCM deployment cannot name different files.
+    """
     ca_label = ca.descr.replace("'", "'\\''")
+    from services.deploy.ssh_ca import artifact_defaults
+    defaults = artifact_defaults(ca, ca_type)
 
     if platform == 'windows':
         # PowerShell escaping: backtick-escape backticks, escape single quotes for here-strings
+        # shortcut: the PowerShell scripts keep their own fixed paths, because a Windows
+        # host has no /etc/ssh; upgrade if UCM ever names Windows artefact defaults.
         ps_key = pub_key.strip().replace('\n', ' ').replace('`', '``')
         ps_label = ca.descr.replace('`', '``').replace('"', '`"')
         if ca_type == 'user':
@@ -19,11 +27,11 @@ def _generate_setup_script(ca, pub_key, ca_type, hostname, platform='unix'):
 
     safe_key = pub_key.strip().replace("\n", " ").replace("'", "'\\''")
     if ca_type == 'user':
-        return _user_ca_script(safe_key, ca_label)
-    return _host_ca_script(safe_key, ca_label, hostname, ca.id)
+        return _user_ca_script(safe_key, ca_label, defaults)
+    return _host_ca_script(safe_key, ca_label, hostname, ca.id, defaults)
 
 
-def _user_ca_script(pub_key, ca_label):
+def _user_ca_script(pub_key, ca_label, defaults):
     return rf'''#!/bin/sh
 # ============================================================================
 # SSH User CA Trust Setup Script
@@ -41,8 +49,10 @@ def _user_ca_script(pub_key, ca_label):
 set -eu
 
 # --- Configuration ---
-CA_KEY_DIR="/etc/ssh/ssh_ca_keys"
-CA_KEY_FILE="$CA_KEY_DIR/user_ca.pub"
+# The same paths a UCM deployment of this CA writes on this host
+CA_KEY_FILE="{defaults["ca_pub_path"]}"
+CA_KEY_DIR="$(dirname "$CA_KEY_FILE")"
+KRL_FILE="{defaults["krl_path"]}"
 SSHD_CONFIG="/etc/ssh/sshd_config"
 PRINCIPALS_DIR="/etc/ssh/auth_principals"
 DRY_RUN=false
@@ -266,11 +276,15 @@ if [ "$DRY_RUN" != true ]; then
     info "     echo \\"principal_name\\" > $PRINCIPALS_DIR/<username>"
     info "  2. Sign user keys with the CA using UCM or ssh-keygen"
     info "  3. Users can now log in with their signed certificate"
+    info "Revoked certificates: this script does not install the key revocation list."
+    info "  The SSH CAs page of UCM offers Download KRL for this CA; point sshd_config at it:"
+    info "    RevokedKeys $KRL_FILE"
+    info "  A UCM deployment of this CA writes that file for you; see docs/ADMIN_GUIDE.md."
 fi
 '''
 
 
-def _host_ca_script(pub_key, ca_label, hostname, ca_id):
+def _host_ca_script(pub_key, ca_label, hostname, ca_id, defaults):
     hostname_display = hostname if hostname else '$(hostname -f)'
     return rf'''#!/bin/sh
 # ============================================================================
@@ -289,8 +303,11 @@ def _host_ca_script(pub_key, ca_label, hostname, ca_id):
 set -eu
 
 # --- Configuration ---
-CA_KEY_DIR="/etc/ssh/ssh_ca_keys"
-CA_KEY_FILE="$CA_KEY_DIR/host_ca.pub"
+# The same paths a UCM deployment of this CA writes on this host
+CA_KEY_FILE="{defaults["ca_pub_path"]}"
+CA_KEY_DIR="$(dirname "$CA_KEY_FILE")"
+KRL_FILE="{defaults["krl_path"]}"
+CERT_FILE="{defaults["host_cert_path"]}"
 SSHD_CONFIG="/etc/ssh/sshd_config"
 HOSTNAME="{hostname if hostname else ""}"
 DRY_RUN=false
@@ -444,7 +461,6 @@ if [ -z "$HOST_KEY" ]; then
     exit 1
 fi
 
-CERT_FILE="${{HOST_KEY}}-cert.pub"
 info "Found host key: $HOST_KEY"
 
 if [ -f "$CERT_FILE" ]; then
@@ -455,14 +471,21 @@ else
     warn "Host key signing requires the CA private key, which is managed by UCM."
     info "To sign the host key, use one of these methods:"
     printf "\\n"
-    info "  Option A: Sign via UCM web interface"
+    info "  Option A: Let a UCM deployment sign and write it (recommended)"
+    info "    1. Add this host as an SSH deploy target under Settings > Deployment"
+    info "    2. Open this CA in UCM (Modules > Administration > SSH CAs) and attach that target"
+    info "       under Deployment, with the host certificate path: $CERT_FILE"
+    info "    3. UCM reads the host key itself, signs it for this host and writes the certificate"
+    info "       at that path, then re-pushes the key revocation list on every revocation"
+    printf "\\n"
+    info "  Option B: Sign by hand in the UCM console"
     info "    1. Copy the host public key: $HOST_KEY.pub"
-    info "    2. Go to UCM > SSH > Certificates > Sign Host Key"
-    info "    3. Upload the public key and specify principals: $HOSTNAME"
+    info "    2. Go to UCM > Modules > Administration > SSH Certificates > Issue Certificate"
+    info "    3. Paste the public key and specify principals: $HOSTNAME"
     info "    4. Download the signed certificate"
     info "    5. Place it at: $CERT_FILE"
     printf "\\n"
-    info "  Option B: Sign via UCM API (API key needs the write:ssh permission)"
+    info "  Option C: Sign via UCM API (API key needs the write:ssh permission)"
     info "    curl -sk -X POST https://<ucm-server>/api/v2/ssh/certificates \\\\"
     info "      -H 'X-API-Key: <api-key>' \\\\"
     info "      -H 'Content-Type: application/json' \\\\"
@@ -543,5 +566,9 @@ if [ "$DRY_RUN" != true ]; then
     fi
     info "  Clients should add to their ~/.ssh/known_hosts or ssh_known_hosts:"
     info "    @cert-authority * $(cat $CA_KEY_FILE 2>/dev/null || echo '<CA public key>')"
+    info "Revoked certificates: this script does not install the key revocation list."
+    info "  The SSH CAs page of UCM offers Download KRL for this CA; point sshd_config at it:"
+    info "    RevokedKeys $KRL_FILE"
+    info "  A UCM deployment of this CA writes that file for you; see docs/ADMIN_GUIDE.md."
 fi
 '''

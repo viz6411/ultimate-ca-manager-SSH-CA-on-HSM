@@ -17,7 +17,7 @@ from utils.pagination import parse_request_limit
 from utils.db_transaction import safe_commit
 from models import (
     db, CA, Certificate, DeployTarget, DeployBinding, CRLDeployBinding,
-    DeployDelivery,
+    SSHCADeployBinding, DeployDelivery,
 )
 from services.deploy import DeployService
 from fips_mode import FipsRestricted
@@ -130,8 +130,10 @@ def delete_target(target_id):
         return error_response('Deploy target not found', 404)
     name = target.name
     try:
+        from models.ssh import SSHCertificate
         binding_ids = [b.id for b in target.bindings]
         crl_binding_ids = [b.id for b in target.crl_bindings]
+        ssh_binding_ids = [b.id for b in target.ssh_ca_bindings]
         if binding_ids:
             DeployDelivery.query.filter(
                 DeployDelivery.binding_type == DeployDelivery.BINDING_CERTIFICATE,
@@ -144,6 +146,17 @@ def delete_target(target_id):
                 DeployDelivery.binding_id.in_(crl_binding_ids)).delete(synchronize_session=False)
             CRLDeployBinding.query.filter(
                 CRLDeployBinding.id.in_(crl_binding_ids)).delete(synchronize_session=False)
+        if ssh_binding_ids:
+            DeployDelivery.query.filter(
+                DeployDelivery.binding_type == DeployDelivery.BINDING_SSH_CA,
+                DeployDelivery.binding_id.in_(ssh_binding_ids)).delete(synchronize_session=False)
+            SSHCADeployBinding.query.filter(
+                SSHCADeployBinding.id.in_(ssh_binding_ids)).delete(synchronize_session=False)
+        # A host certificate signed for this server keeps its own record: it is
+        # still a certificate of its CA, and deleting it silently would take it
+        # out of the KRL. Only the link back to the target goes.
+        SSHCertificate.query.filter_by(deploy_target_id=target.id).update(
+            {SSHCertificate.deploy_target_id: None}, synchronize_session=False)
         db.session.delete(target)
         ok, err = safe_commit(logger, 'Failed to delete deploy target')
         if not ok:
@@ -155,7 +168,9 @@ def delete_target(target_id):
             action='deploy_target_delete', resource_type='deploy_target',
             resource_id=str(target_id), resource_name=name,
             details=(f"Deleted deploy target {name} and "
-                     f"{len(binding_ids) + len(crl_binding_ids)} binding(s)"),
+                     f"{len(binding_ids) + len(crl_binding_ids) + len(ssh_binding_ids)} "
+                     f"binding(s); artefacts already written on that host were not removed "
+                     f"(no undeploy)"),
             success=True)
         return success_response(message='Deploy target deleted')
     except Exception as e:
@@ -643,8 +658,8 @@ def list_deliveries():
     cert_id = request.args.get('certificate_id', type=int)
     if binding_id:
         binding_type = request.args.get('binding_type', 'certificate')
-        if binding_type not in ('certificate', 'crl'):
-            return error_response('binding_type must be certificate or crl', 400)
+        if binding_type not in ('certificate', 'crl', 'ssh_ca'):
+            return error_response('binding_type must be certificate, crl or ssh_ca', 400)
         query = query.filter_by(binding_id=binding_id, binding_type=binding_type)
     elif cert_id:
         binding_ids = [b.id for b in DeployBinding.query.filter_by(certificate_id=cert_id)]

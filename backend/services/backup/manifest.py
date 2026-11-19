@@ -342,7 +342,11 @@ SECTIONS: Dict[str, Section] = {
         identity=('serial', 'ssh_ca_id'),
         exclude={**_SURROGATE},
         references={'ssh_ca_id': 'ssh_cas',
-                    'owner_group_id': 'groups'},
+                    'owner_group_id': 'groups',
+                    # Which server a host certificate was signed for. Nullable:
+                    # a certificate of a target this restore does not carry comes
+                    # back without the link, which is what deleting the target does.
+                    'deploy_target_id': 'deploy_targets'},
     ),
     'microsoft_cas': Section(
         model='models.msca:MicrosoftCA',
@@ -468,6 +472,15 @@ SECTIONS: Dict[str, Section] = {
         references={
             'target_id': 'deploy_targets',
             'ca_id': 'certificate_authorities',
+        },
+    ),
+    'ssh_ca_deploy_bindings': Section(
+        model='models.deploy:SSHCADeployBinding',
+        identity=('target_id', 'ssh_ca_id'),
+        exclude={**_SURROGATE},
+        references={
+            'target_id': 'deploy_targets',
+            'ssh_ca_id': 'ssh_cas',
         },
     ),
     'scan_profiles': Section(

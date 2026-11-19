@@ -7,17 +7,9 @@ import { deployService } from '../services'
 import { useNotification } from '../contexts'
 import { usePermission } from '../hooks'
 import { extractData, formatDate } from '../lib/utils'
+import { retryCountdown } from '../lib/deployRetry'
 
 const STATUS_VARIANT = { delivered: 'success', pending: 'warning', failed: 'danger' }
-
-function retryCountdown(nextAttemptAt, now) {
-  const milliseconds = new Date(nextAttemptAt).getTime() - now
-  if (!Number.isFinite(milliseconds)) return ''
-  const seconds = Math.max(0, Math.ceil(milliseconds / 1000))
-  const minutes = Math.floor(seconds / 60)
-  const remainingSeconds = seconds % 60
-  return minutes > 0 ? `${minutes}m ${String(remainingSeconds).padStart(2, '0')}s` : `${seconds}s`
-}
 
 const EMPTY = {
   target_id: '', crl_path: '', format: 'pem',

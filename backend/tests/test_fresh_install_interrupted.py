@@ -51,6 +51,7 @@ def test_a_fresh_install_cut_before_an_index_has_its_whole_schema_at_the_next_st
         expected = snapshot(ref.engine)
         expected_indexes = _indexes(ref.engine)
     for db in make_base(dialect, tmp_path, monkeypatch, 'ic', sql=''):
+        import migration_runner
         release = _cut_at_first_index_after(db.engine, {'users', 'certificate_authorities'})
         with pytest.raises(_Cut):
             _start(db, lambda: fresh_metadata().create_all(db.engine))
@@ -58,4 +59,7 @@ def test_a_fresh_install_cut_before_an_index_has_its_whole_schema_at_the_next_st
         _start(db, lambda: fresh_metadata().create_all(db.engine))
         assert expected_indexes - _indexes(db.engine) == set()
         assert list(differences(snapshot(db.engine), expected)) == []
-        assert db.registry() == ['300_upgrade_from_2_254']
+        # A fresh install records every migration of this release as applied, so no later
+        # start mistakes it for a database older than 2.254
+        assert db.registry() == migration_runner._list_migration_names()
+        assert '300_upgrade_from_2_254' in db.registry()

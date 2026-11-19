@@ -353,6 +353,10 @@ export default function SSHCertificatesPage() {
             {row.serial_shared_with?.length > 0 && (
               <Badge variant="warning" size="sm" icon={Warning}>{t('sshCertificates.serialShared')}</Badge>
             )}
+            {/* The host certificate of a deploy target, named by that target */}
+            {row.deploy_target_name && (
+              <Badge variant="secondary" size="sm">{row.deploy_target_name}</Badge>
+            )}
           </div>
         )
       },
@@ -451,9 +455,14 @@ export default function SSHCertificatesPage() {
       header: t('sshCertificates.caName'),
       priority: 5,
       hideOnMobile: true,
-      render: (val) => (
+      render: (val, row) => (
         <span className="text-xs text-text-secondary truncate">
           {val || '—'}
+          {/* A host certificate signed for one target says which target it is for */}
+          {row.deploy_target_name && (
+            /* A target name cut to the column width still has to be readable in full */
+            <span className="text-2xs text-text-tertiary" title={row.deploy_target_name}> · {row.deploy_target_name}</span>
+          )}
         </span>
       ),
     },
@@ -526,6 +535,11 @@ export default function SSHCertificatesPage() {
           <CompactField autoIcon="serial" label={t('sshCertificates.serial')} value={selectedCert.serial || '—'} mono copyable />
           <CompactField autoIcon="key" label={t('sshCertificates.keyId')} value={selectedCert.key_id || '—'} copyable />
           <CompactField autoIcon="keyType" label={t('common.keyType')} value={selectedCert.key_type || '—'} />
+          {/* Which server this host certificate was signed for, and where it was written */}
+          <CompactField icon={Terminal} label={t('sshCertificates.deployTarget')}
+            value={selectedCert.deploy_target_name || ''} />
+          <CompactField label={t('sshCertificates.deployTargetPath')} mono
+            value={selectedCert.deploy_target_path || ''} />
         </CompactGrid>
         {selectedCert.fingerprint && (
           <div className="mt-2">

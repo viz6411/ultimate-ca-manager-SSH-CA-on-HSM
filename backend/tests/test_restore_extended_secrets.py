@@ -159,6 +159,7 @@ def _seed():
     from models.acme_models import (
         AcmeClientOrder, AcmeDomain, AcmeLocalDomain, DnsProvider)
     from models.certificate_template import CertificateTemplate
+    from models.deploy import DeployTarget
     from models.discovered_certificate import ScanProfile
     from models.group import Group
     from models.hsm import HsmKey, HsmProvider
@@ -193,6 +194,11 @@ def _seed():
         refid=f'{MARK}-sshca-{s}', descr=f'{MARK} SSH CA {s}', ca_type='user',
         public_key=f'ssh-ed25519 AAAA {MARK}', private_key=_ssh_key_material(),
         key_type='ed25519', fingerprint=f'SHA256:{MARK}{s}', serial_counter=3))
+    # Two targets: the SSH certificate's link to the server its binding signed
+    # it for needs the row it resolves to, and a row a drift can move to
+    deploy_targets = pair(lambda s: DeployTarget(
+        name=f'{MARK}-deploy-{s}', host=f'deploy-{s}.example.test',
+        username='ucm', private_key=f'{MARK}-key-{s}'))
 
     dns_providers[1].credentials = SECRET_VALUES[('dns_providers', 'credentials')]
 
@@ -293,7 +299,8 @@ def _seed():
         certificate='ssh-ed25519-cert-v01@openssh.com AAAA',
         principals='["ucm"]', serial=IDENTITIES['ssh_certificates']['serial'],
         valid_from=SEEDED_AT, valid_to=datetime(2027, 3, 4, 5, 6, 7),
-        key_type='ed25519', fingerprint=f'SHA256:{MARK}cert', source='web'))
+        key_type='ed25519', fingerprint=f'SHA256:{MARK}cert', source='web',
+        deploy_target_id=deploy_targets[1].id))
 
     ssh_authorities[1].owner_group_id = groups[1].id
     # An authority whose private key never left the token: the only key link it
@@ -317,6 +324,7 @@ def _unseed():
     from models.acme_models import (
         AcmeClientOrder, AcmeDomain, AcmeLocalDomain, DnsProvider)
     from models.certificate_template import CertificateTemplate
+    from models.deploy import DeployTarget
     from models.discovered_certificate import ScanProfile
     from models.group import Group
     from models.hsm import HsmKey, HsmProvider
@@ -352,6 +360,8 @@ def _unseed():
             (DnsProvider, DnsProvider.name),
             (MicrosoftCA, MicrosoftCA.name),
             (ScanProfile, ScanProfile.name),
+            # After the certificate that points at them
+            (DeployTarget, DeployTarget.name),
             (Certificate, Certificate.refid),
             (CA, CA.refid),
             (CertificateTemplate, CertificateTemplate.name),

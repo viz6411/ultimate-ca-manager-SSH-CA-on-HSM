@@ -2160,7 +2160,7 @@ GET /api/v2/ssh/stats
 
 ## Deployment
 
-Pushes certificates and CRLs to targets: an SSH (SFTP) host, or an HTTP endpoint that receives a templated body. Reading needs `read:deploy`, creating, changing, pushing and testing `write:deploy`, deleting `delete:deploy`. A missing target, binding or delivery answers `404`. Bindings a renewal leaves on the previous certificate are described under [Deploy Bindings Left Behind by a Renewal](#deploy-bindings-left-behind-by-a-renewal); `GET /api/v2/deploy/bindings` is documented there.
+Pushes certificates, CRLs and SSH CA artefacts to targets: an SSH (SFTP) host, or an HTTP endpoint that receives a templated body. Reading needs `read:deploy`, creating, changing, pushing and testing `write:deploy`, deleting `delete:deploy`. A missing target, binding or delivery answers `404`. Bindings a renewal leaves on the previous certificate are described under [Deploy Bindings Left Behind by a Renewal](#deploy-bindings-left-behind-by-a-renewal); `GET /api/v2/deploy/bindings` is documented there.
 
 ### Targets
 ```http
@@ -2198,12 +2198,28 @@ POST /api/v2/deploy/crl-bindings/{binding_id}/deploy
 ```
 CRL bindings need an SSH target (`400` otherwise). `POST` takes `target_id` and `ca_id` (required), `crl_path` (an absolute file path, required), `format` (`pem` by default, or `der`), `include_parent_crls` (PEM only), `reload_command` and `enabled`; the same pair twice answers `409`. Each list item carries its `last_delivery`. `deploy` pushes now (`200`, or `502` with the error).
 
+### SSH CA Bindings
+```http
+GET /api/v2/ssh/cas/{ca_id}/deploy-bindings
+POST /api/v2/ssh/cas/{ca_id}/deploy-bindings
+PATCH /api/v2/ssh/cas/{ca_id}/deploy-bindings/{binding_id}
+DELETE /api/v2/ssh/cas/{ca_id}/deploy-bindings/{binding_id}
+POST /api/v2/ssh/cas/{ca_id}/deploy-bindings/{binding_id}/deploy
+```
+- These routes sit under the CA: reading needs `read:deploy` **and** `read:ssh_cas`, changing `write:deploy` **and** `write:ssh_cas`, deleting `delete:deploy` **and** `write:ssh_cas`. An unknown CA, or a `binding_id` that belongs to another CA, answers `404`.
+- `GET` returns the CA (`id`, `refid`, `descr`, `ca_type`, and `deploy_defaults`: the three paths the dialog starts from) and its `bindings`, each with its `last_delivery`. A binding carries its paths, `validity`, `principals`, `key_id_template`, `host_public_key`, `reload_command`, `enabled`, the target (`target_name`, `target_host`, `target_enabled`) and `host_certificate`: the current host certificate signed for that target (`id`, `refid`, `key_id`, `status`, `valid_to`) or `null`.
+- `POST` takes `target_id` (an SSH target; an HTTP target is refused) and `ca_pub_path`, `krl_path`, `host_cert_path` — absolute file paths of 512 characters at most, at least one of the three, all distinct — plus `reload_command` (one command: `;`, `|`, `&`, `&&`, `||`, newlines, backticks and `$(` are refused on that field, because the string is handed to the target's shell as it is) and `enabled`. A host CA also takes `validity` (seconds or a duration like `24h`, capped by the CA's `max_ttl`), `principals` (exact host names; at least one whenever a host certificate is written), `key_id_template` (`{{hostname}}`, `{{target_name}}`, `{{ca_name}}`, `{{principal}}`, `{{serial}}`, raw filter only, and only when the CA allows custom key IDs) and `host_public_key`. A user CA is refused (`422`) when it names any of those four, and a host certificate, validity, principals or key ID template naming no host certificate path is refused too. The same target and CA twice answers `409`. The first push is queued on creation, and the initial host certificate is signed then, not on save.
+- Saving probes the target once, in one SSH session: a probe file named `<path>.ucm-probe` is written into every non-empty path and removed again (a probe file whose removal the host refused stays there and does not fail the save), `sudo -k -n -v` runs when a `reload_command` is set, and the host public key is read from the host itself (`/etc/ssh`, then `/usr/local/etc/ssh`; `ssh_host_ed25519_key.pub`, then ecdsa, then rsa) when a host certificate is to be signed. What fails answers `422` with `details.fields`, one entry per field carrying `message`, `i18n_key` and `values`, so the reason can be shown under the field it concerns; an unreachable target answers `502`, and a key you pasted that this host does not publish is refused on the same field. A `409` here means something else: the host key of that target is not the one UCM pinned for it, or the same target and CA are attached twice, or two bindings of one target name the same path.
+- Revoking or deleting a certificate of the CA queues a KRL-only push to every bound target: sshd re-reads `RevokedKeys` on the next authentication, so no reload is needed. A revocation that arrives while a full push is still queued does not narrow that queue row: the row keeps the wider job, because the KRL is generated when the delivery runs and a full push writes it anyway. A revocation that arrives while a push is already running is caught after it finishes: UCM queues one further KRL-only push for that binding, so the host ends up holding the KRL that carries it. The `reload_command` runs only on deliveries that wrote the CA public key or the host certificate. `deploy` pushes everything the binding names, now and synchronously (`200` with the delivery, `502` with its `last_error`).
+- `DELETE` removes the binding and leaves the files it wrote on the host: the response message and the audit entry name them. Deleting the target keeps the host certificate it was signed for, so that certificate still appears in the KRL.
+- Which target a host certificate was signed for is deployment information, so it is only there for a reader who holds `read:deploy` next to `read:ssh`: `GET /api/v2/ssh/certificates` and `GET /api/v2/ssh/certificates/{cert_id}` carry `deploy_target_id` and `deploy_target_name` (null without it), the detail view adds `deploy_target_path` — the file the binding writes that certificate to — and `GET /api/v2/ssh/cas` adds per CA `deploy_targets_total`, `krl_undelivered_targets` (targets whose newest KRL did not arrive) and `deploy_defaults`, all zero or null for the same reader.
+
 ### Deliveries
 ```http
 GET /api/v2/deploy/deliveries?binding_id=1&certificate_id=2&binding_type=certificate
 POST /api/v2/deploy/deliveries/{delivery_id}/retry
 ```
-`binding_type` is `certificate` (default) or `crl`, else `400`. `retry` requeues a failed delivery; any other status answers `400`.
+`binding_type` is `certificate` (default), `crl` or `ssh_ca`, else `400`. `retry` requeues a failed delivery; any other status answers `400`.
 
 ---
 

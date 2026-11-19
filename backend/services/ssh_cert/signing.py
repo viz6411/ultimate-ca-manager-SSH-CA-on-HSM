@@ -71,7 +71,7 @@ class SSHCertificateSigningMixin:
                          validity_seconds=None, key_id=None,
                          extensions=None, critical_options=None,
                          descr=None, source='web', username=None,
-                         owner_group_id=None):
+                         owner_group_id=None, deploy_target_id=None):
         ca = db.session.get(SSHCertificateAuthority, ca_id)
         if not ca:
             raise ValueError(f"SSH CA not found: {ca_id}")
@@ -226,6 +226,9 @@ class SSHCertificateSigningMixin:
                 refid=str(uuid.uuid4()),
                 descr=descr,
                 ssh_ca_id=ca_id,
+                # Set by an SSH CA deployment binding: the certificate belongs to
+                # that server, which is what lets a later release reissue it there
+                deploy_target_id=deploy_target_id,
                 cert_type=cert_type,
                 key_id=key_id,
                 public_key=pub_openssh,

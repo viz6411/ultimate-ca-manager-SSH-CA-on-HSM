@@ -4,7 +4,7 @@ SSH CA CRUD routes — list, get, import, create, update, delete.
 
 from flask import request, g
 
-from auth.unified import hsm_binding_refusal, require_auth
+from auth.unified import has_permission, hsm_binding_refusal, require_auth
 from fips_mode import FipsRestricted
 from services.hsm.base_provider import (HsmConfigError, HsmConnectionError, HsmError,
                                         HsmKeyNotFoundError)
@@ -60,10 +60,39 @@ def _opt_in(data, name):
     return value
 
 
+def _deploy_state(ca, summaries):
+    """What a viewer of this CA needs before opening its deployment section: how
+    many targets carry its artefacts, and how many of them do not have the current
+    KRL. ``krl_undelivered_targets`` is a warning, not a CA fault — it is the list
+    saying "this CA is revoked here and there", and the badge next to the name is
+    what reads it.
+
+    ``deploy_defaults`` comes from the same helper the CA's setup script uses, so a
+    default attach and the drop-in the script writes cannot end up naming different
+    files.
+    """
+    from services.deploy.ssh_ca import artifact_defaults
+
+    if not has_permission('read:deploy', getattr(g, 'permissions', None) or []):
+        # Where this CA is deployed, and which bound target is missing its current KRL, is
+        # deployment information: the deployment section of this CA is hidden from this reader,
+        # so the badges next to the CA name have to be hidden with it.
+        return {'deploy_targets_total': 0, 'krl_undelivered_targets': 0, 'deploy_defaults': None}
+
+    summary = summaries.get(ca.id) or {}
+    return {
+        'deploy_targets_total': summary.get('targets', 0),
+        'krl_undelivered_targets': summary.get('krl_undelivered', 0),
+        'deploy_defaults': artifact_defaults(ca),
+    }
+
+
 @bp.route('/api/v2/ssh/cas', methods=['GET'])
 @require_auth(['read:ssh_cas'])
 def list_ssh_cas():
     """List all SSH CAs with optional filtering."""
+    from models import SSHCADeployBinding
+
     page, per_page = parse_request_pagination(default_per_page=20)
     search = request.args.get('search', '').strip()
     ca_types = request.args.getlist('type')
@@ -84,8 +113,13 @@ def list_ssh_cas():
     query = query.order_by(SSHCertificateAuthority.created_at.desc())
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
 
+    # Two queries for the whole installation, whatever the page size: the
+    # deployment state of a list must not cost one request per CA.
+    summaries = SSHCADeployBinding.delivery_summary()
+    data = [{**ca.to_dict(), **_deploy_state(ca, summaries)} for ca in pagination.items]
+
     return success_response(
-        data=[ca.to_dict() for ca in pagination.items],
+        data=data,
         meta={
             'total': pagination.total,
             'page': page,
@@ -99,11 +133,14 @@ def list_ssh_cas():
 @require_auth(['read:ssh_cas'])
 def get_ssh_ca(ca_id):
     """Get SSH CA details."""
+    from models import SSHCADeployBinding
+
     ca = db.session.get(SSHCertificateAuthority, ca_id)
     if not ca:
         return error_response('SSH CA not found', 404)
 
-    return success_response(data=ca.to_dict())
+    return success_response(data={**ca.to_dict(),
+                                  **_deploy_state(ca, SSHCADeployBinding.delivery_summary())})
 
 
 @bp.route('/api/v2/ssh/cas/import', methods=['POST'])

@@ -26,6 +26,7 @@ export const Input = forwardRef(function Input({
   helperText,
   icon,
   className,
+  mono,   // the input itself is monospace: paths, commands, key material
   type,
   showStrength,
   hasExistingValue,  // Shows "Set" badge and "enter new to change" hint
@@ -123,7 +124,8 @@ export const Input = forwardRef(function Input({
             "disabled:opacity-50 disabled:cursor-not-allowed",
             error ? "border-accent-danger" : "border-border",
             icon && "pl-9",
-            isPassword && "pr-10"
+            isPassword && "pr-10",
+            mono && "font-mono"
           )}
           style={{
             '--focus-shadow': 'color-mix(in srgb, var(--accent-primary) 15%, transparent)',
@@ -141,6 +143,9 @@ export const Input = forwardRef(function Input({
           autoComplete={noAutofill ? 'off' : undefined}
           {...props}
           id={fieldId}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? `${fieldId}-error`
+            : (helperText && !hasExistingValue) ? `${fieldId}-helper` : undefined}
         />
         
         {/* Password toggle -- hidden when there's nothing typed to reveal.
@@ -182,7 +187,7 @@ export const Input = forwardRef(function Input({
       )}
 
       {error && (
-        <p className="text-xs status-danger-text">{error}</p>
+        <p id={`${fieldId}-error`} role="status" className="text-xs status-danger-text">{error}</p>
       )}
       
       {/* Helper text - show "enter new to change" for existing values */}
@@ -191,7 +196,7 @@ export const Input = forwardRef(function Input({
       )}
       
       {helperText && !error && !hasExistingValue && (
-        <p className="text-xs text-text-tertiary">{helperText}</p>
+        <p id={`${fieldId}-helper`} className="text-xs text-text-tertiary">{helperText}</p>
       )}
     </div>
   )
