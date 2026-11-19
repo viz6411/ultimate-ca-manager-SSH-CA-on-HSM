@@ -6657,7 +6657,7 @@
       "principalTooLong": "Il principal {{principal}} è troppo lungo (massimo 255 caratteri).",
       "principalsNeedHostCert": "I principal appartengono al certificato host: imposta prima il suo percorso.",
       "principalsRequired": "È richiesto almeno un principal per il certificato host.",
-      "reloadChained": "Il comando di reload è un solo comando: niente concatenazione con ; | & && || né sostituzione di comandi. Indica uno script se devi eseguirne più di uno.",
+      "reloadChained": "Il comando di reload è un solo comando: niente concatenazione con ; | & && ||, niente redirezione con > o < né sostituzione di comandi. Indica uno script se devi eseguirne più di uno.",
       "sudoRequired": "{{user}} non può usare sudo su questo host senza password: aggiungi a sudoers una regola NOPASSWD per {{command}} («{{user}} ALL=(root) NOPASSWD: {{command}}») oppure cancella il comando di reload. Al salvataggio si verifica che sudo non richieda una password, non che quella regola nomini questo comando.",
       "targetTaken": "Questo obiettivo è già collegato a questa CA SSH.",
       "templateFilter": "Filtro modello sconosciuto: {{filter}}. Un ID chiave usa {{name}} senza filtro.",

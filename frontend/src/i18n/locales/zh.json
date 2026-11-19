@@ -6657,7 +6657,7 @@
       "principalTooLong": "principal {{principal}} 过长（最多 255 个字符）。",
       "principalsNeedHostCert": "principals 属于主机证书：请先设置其路径。",
       "principalsRequired": "主机证书至少需要一个 principal。",
-      "reloadChained": "重载命令只能是单条命令：不使用 ; | & && || 连接，也不进行命令替换。如需执行多条命令，请指定一个脚本。",
+      "reloadChained": "重载命令只能是单条命令：不使用 ; | & && || 连接，不使用 > 或 < 重定向，也不进行命令替换。如需执行多条命令，请指定一个脚本。",
       "sudoRequired": "{{user}} 在该主机上无法免密使用 sudo：请在 sudoers 中为 {{command}} 添加 NOPASSWD 授权（{{user}} ALL=(root) NOPASSWD: {{command}}），或清空重载命令。保存时只验证此处的 sudo 无需密码，不验证该授权是否涵盖此命令。",
       "targetTaken": "该目标已绑定到此 SSH CA。",
       "templateFilter": "未知的模板过滤器：{{filter}}。密钥 ID 直接使用 {{name}}，不带过滤器。",

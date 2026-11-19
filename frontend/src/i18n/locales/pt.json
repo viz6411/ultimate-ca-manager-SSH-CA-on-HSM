@@ -6657,7 +6657,7 @@
       "principalTooLong": "O principal {{principal}} é longo demais (máximo de 255 caracteres).",
       "principalsNeedHostCert": "Os principals pertencem ao certificado de host: defina primeiro o caminho.",
       "principalsRequired": "É necessário pelo menos um principal para o certificado de host.",
-      "reloadChained": "O comando de recarga é um único comando: sem encadeamento com ; | & && || nem substituição de comandos. Indique um script se precisar executar vários comandos.",
+      "reloadChained": "O comando de recarga é um único comando: sem encadeamento com ; | & && ||, sem redireção com > ou < nem substituição de comandos. Indique um script se precisar executar vários comandos.",
       "sudoRequired": "{{user}} não pode usar sudo neste host sem senha: adicione ao sudoers uma regra NOPASSWD para {{command}} (“{{user}} ALL=(root) NOPASSWD: {{command}}”) ou limpe o comando de recarga. Ao salvar, verifica-se que o sudo não pede senha, não que essa regra nomeie este comando.",
       "targetTaken": "Este destino já está vinculado a esta AC SSH.",
       "templateFilter": "Filtro de modelo desconhecido: {{filter}}. Um ID de chave usa {{name}} sem filtro.",

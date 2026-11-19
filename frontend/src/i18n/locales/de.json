@@ -6657,7 +6657,7 @@
       "principalTooLong": "Principal {{principal}} ist zu lang (max. 255 Zeichen).",
       "principalsNeedHostCert": "Principal-Namen gehören zum Host-Zertifikat: setzen Sie zuerst dessen Pfad.",
       "principalsRequired": "Für das Host-Zertifikat ist mindestens ein Principal-Name erforderlich.",
-      "reloadChained": "Der Reload-Befehl ist genau ein Befehl: keine Verkettung mit ; | & && || und keine Befehlsersetzung. Nennen Sie stattdessen ein Skript, das die weiteren Befehle ausführt.",
+      "reloadChained": "Der Reload-Befehl ist genau ein Befehl: keine Verkettung mit ; | & && ||, keine Umleitung mit > oder < und keine Befehlsersetzung. Nennen Sie stattdessen ein Skript, das die weiteren Befehle ausführt.",
       "sudoRequired": "{{user}} kann auf diesem Host sudo nicht ohne Passwort benutzen: ergänzen Sie in sudoers einen NOPASSWD-Eintrag für {{command}} («{{user}} ALL=(root) NOPASSWD: {{command}}») oder löschen Sie den Reload-Befehl. Beim Speichern wird geprüft, dass sudo kein Passwort verlangt, nicht dass dieser Eintrag genau diesen Befehl nennt.",
       "targetTaken": "Dieses Ziel ist bereits mit diesem SSH-CA verbunden.",
       "templateFilter": "Unbekannter Template-Filter: {{filter}}. Eine Key-ID verwendet {{name}} ohne Filter.",

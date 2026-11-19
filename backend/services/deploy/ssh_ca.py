@@ -337,10 +337,11 @@ def validate_binding(ca, target, data, current=None) -> dict:
         # The remote sshd's command is one command: the string goes to the target's shell
         # verbatim, so chaining a second command here would be a way to run anything on that
         # host through a field whose whole job is "reload sshd".
-        if re.search(r'[;\n\r]|&&|\|\||\||&|`|\$\(', command):
+        if re.search(r'[;\n\r]|&&|\|\||\||&|`|\$\(|[<>]', command):
             raise BindingRefusal(
                 'reload_command is one command: remove the shell chaining (; | & newlines, '
-                'command substitution) and put the second command in a script the binding runs',
+                'redirection > <, command substitution) and put the second command in a script '
+                'the binding runs',
                 'reload_command', 'sshDeploy.errors.reloadChained')
         out['reload_command'] = command or None
     if 'enabled' in data:

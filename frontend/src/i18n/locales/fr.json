@@ -6660,7 +6660,7 @@
       "principalTooLong": "Le principal {{principal}} est trop long (255 caractères maximum).",
       "principalsNeedHostCert": "Les principaux concernent le certificat d’hôte : définissez d’abord son chemin.",
       "principalsRequired": "Au moins un principal est requis pour le certificat d’hôte.",
-      "reloadChained": "La commande de rechargement est une seule commande : pas d’enchaînement par ; | & && || ni de substitution de commande. Indiquez un script si vous devez en exécuter plusieurs.",
+      "reloadChained": "La commande de rechargement est une seule commande : pas d’enchaînement par ; | & && ||, pas de redirection par > ou <, ni de substitution de commande. Indiquez un script si vous devez en exécuter plusieurs.",
       "sudoRequired": "{{user}} ne peut pas utiliser sudo sur cet hôte sans mot de passe : ajoutez dans sudoers une règle NOPASSWD pour {{command}} ( « {{user}} ALL=(root) NOPASSWD: {{command}} » ), sinon effacez la commande de rechargement. À l’enregistrement, on vérifie que sudo ne demande pas de mot de passe, pas que cette règle nomme cette commande.",
       "targetTaken": "Cette cible est déjà associée à cette AC SSH.",
       "templateFilter": "Filtre de modèle inconnu : {{filter}}. Un identifiant de clé s’écrit {{name}} sans filtre.",

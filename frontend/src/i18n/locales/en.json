@@ -6660,7 +6660,7 @@
       "principalTooLong": "Principal {{principal}} is too long (max 255 characters).",
       "principalsNeedHostCert": "Principals belong to the host certificate: set its path first.",
       "principalsRequired": "At least one principal is required for the host certificate.",
-      "reloadChained": "reload_command is one command: no chaining with ; | & && || and no command substitution. Name a script instead, and let that script run the rest.",
+      "reloadChained": "reload_command is one command: no chaining with ; | & && ||, no redirection with > or <, and no command substitution. Name a script instead, and let that script run the rest.",
       "sudoRequired": "{{user}} cannot use sudo on this host without a password: add a NOPASSWD grant for {{command}} («{{user}} ALL=(root) NOPASSWD: {{command}}») to sudoers, or clear the reload command. Saving proves that sudo here needs no password, not that the grant names this command.",
       "targetTaken": "This target is already attached to this SSH CA.",
       "templateFilter": "Unknown template filter: {{filter}}. A key ID uses {{name}} without a filter.",

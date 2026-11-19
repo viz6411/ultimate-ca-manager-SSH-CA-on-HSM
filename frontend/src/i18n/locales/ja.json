@@ -6660,7 +6660,7 @@
       "principalTooLong": "principal {{principal}} が長すぎます（最大 255 文字）。",
       "principalsNeedHostCert": "principals はホスト証明書に関する項目です。まずそのパスを設定してください。",
       "principalsRequired": "ホスト証明書には少なくとも 1 つの principal が必要です。",
-      "reloadChained": "リロードコマンドは 1 つのコマンドのみにしてください。; | & && || による連結とコマンド置換は使えません。複数実行する場合はスクリプトを指定してください。",
+      "reloadChained": "リロードコマンドは 1 つのコマンドのみにしてください。; | & && || による連結、> や < によるリダイレクト、コマンド置換は使えません。複数実行する場合はスクリプトを指定してください。",
       "sudoRequired": "{{user}} はこのホストでパスワードなしの sudo を使えません。sudoers に {{command}} 用の NOPASSWD 権限 («{{user}} ALL=(root) NOPASSWD: {{command}}») を追加するか、リロードコマンドを空にしてください。保存時に確認するのは、このホストで sudo がパスワードを求めないことであり、その権限がこのコマンドを許可していることではありません。",
       "targetTaken": "このターゲットはこの SSH CA に既に接続されています。",
       "templateFilter": "不明なテンプレートフィルタ: {{filter}}。キー ID はフィルタなしで {{name}} を使います。",

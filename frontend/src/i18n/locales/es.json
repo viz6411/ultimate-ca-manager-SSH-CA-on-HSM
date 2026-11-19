@@ -6657,7 +6657,7 @@
       "principalTooLong": "El principal {{principal}} es demasiado largo (máximo 255 caracteres).",
       "principalsNeedHostCert": "Los principals pertenecen al certificado de host: defina antes su ruta.",
       "principalsRequired": "Se requiere al menos un principal para el certificado de host.",
-      "reloadChained": "La orden de recarga es una sola orden: sin encadenamiento con ; | & && || ni sustitución de órdenes. Indique un script si necesita ejecutar varias órdenes.",
+      "reloadChained": "La orden de recarga es una sola orden: sin encadenamiento con ; | & && ||, sin redirección con > o < ni sustitución de órdenes. Indique un script si necesita ejecutar varias órdenes.",
       "sudoRequired": "{{user}} no puede usar sudo en este host sin contraseña: añada a sudoers una regla NOPASSWD para {{command}} («{{user}} ALL=(root) NOPASSWD: {{command}}») o borre la orden de recarga. Al guardar se comprueba que sudo no pide contraseña, no que esa regla nombre esta orden.",
       "targetTaken": "Este destino ya está vinculado a esta CA SSH.",
       "templateFilter": "Filtro de plantilla desconocido: {{filter}}. Un id. de clave usa {{name}} sin filtro.",
