@@ -1159,7 +1159,13 @@
     "uniqueSubjectChanged": "Unique subject setting updated",
     "uniqueSubjectChangeFailed": "Could not update the unique subject setting",
     "uniqueSubjectShared_one": "{{count}} subject is already carried by several entities: {{examples}}. Nothing tells which one a new certificate is for: renewals of its certificates are refused as they are, and only a manual issuance or a CSR signing of it goes through, with the override",
-    "uniqueSubjectShared_other": "{{count}} subjects are already carried by several entities, among them {{examples}}. Nothing tells which one a new certificate is for: renewals of their certificates are refused as they are, and only a manual issuance or a CSR signing of them goes through, with the override"
+    "uniqueSubjectShared_other": "{{count}} subjects are already carried by several entities, among them {{examples}}. Nothing tells which one a new certificate is for: renewals of their certificates are refused as they are, and only a manual issuance or a CSR signing of them goes through, with the override",
+    "tokenCertAlready": "The token already holds this certificate",
+    "tokenCertConflictConfirm": "The token slot already holds a certificate: {{subject}} (serial {{serial}}, valid until {{notAfter}}). Replace it with the new CA certificate?",
+    "tokenCertUploadFailed": "CA created, but the certificate was not stored on the token: {{error}}",
+    "tokenCertUploaded": "Certificate stored on the token",
+    "updateTokenCert": "Update certificate on token",
+    "updateTokenCertHint": "Write the new CA certificate into the token slot that holds its signing key"
   },
   "csrs": {
     "uploadCSR": "Upload CSR",

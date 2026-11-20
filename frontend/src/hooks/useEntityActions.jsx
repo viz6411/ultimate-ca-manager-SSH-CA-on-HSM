@@ -27,6 +27,7 @@ import { certificatesService, casService, userCertificatesService } from '../ser
 import { ENTITY_RESOURCE, entityService, entityTitle } from '../lib/entityDetail'
 import { isOnHold, downloadBlob } from '../lib/utils'
 import { holdsNoKey } from '../lib/caSelection'
+import { holdsCertOnToken, uploadCertToToken } from '../lib/tokenCertUpload'
 import { canExportPrivateKey } from '../lib/exportPermissions'
 import { localOnlyRevocationWarning } from '../lib/revocationOutcome'
 import { downloadExport } from '../lib/exportDownload'
@@ -345,6 +346,10 @@ export function useEntityActions({ type, entity, entityId, onChanged, onClose, o
         && data.has_private_key && !data.uses_hsm }),
     row({ id: 'restore', label: t('cas.restore', 'Restore'), icon: ArrowsClockwise, tone: 'success',
       onClick: () => setRestoreOpen(true), visible: isCA && canWrite('cas') && !!data.offline }),
+    // A PKCS#11 token holds a certificate next to its key; cloud HSMs hold keys only
+    row({ id: 'updateTokenCert', label: t('cas.updateTokenCert'), icon: Key, tone: 'success',
+      onClick: () => uploadCertToToken({ ca: data, t, showSuccess, showError, showConfirm }),
+      visible: isCA && canWrite('cas') && holdsCertOnToken(data) && !data.pending && !data.revoked }),
     // Rendered by the CA panel's "no key" banner, not by the action bar
     row({ id: 'importKey', label: t('cas.importPrivateKey', 'Import private key'), icon: Key, inBar: false,
       onClick: () => setImportKeyOpen(true), visible: isCA && canWrite('cas') && holdsNoKey(data) }),

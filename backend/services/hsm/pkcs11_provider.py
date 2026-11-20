@@ -8,6 +8,10 @@ Based on python-pkcs11 library and PKCS#11 v3.0 standard (OASIS)
 import hashlib
 import logging
 import os
+import shutil
+import subprocess
+import tempfile
+import threading
 from typing import Dict, List, Optional, Any
 from pathlib import Path
 
@@ -27,6 +31,19 @@ logger = logging.getLogger(__name__)
 _initialized_by: Dict[str, int] = {}
 _inherited: List[Any] = []
 
+# A Cryptoki module caches the token's object list for as long as its initialized
+# instance lives, so a card changed outside this process keeps answering with the state
+# it had when that instance was first opened. reload_lib() is how a long-lived server
+# gets the truth; live sessions are counted so reloading never invalidates one.
+_lib_lock = threading.Lock()
+_open_sessions = 0
+
+
+def _count_session(delta: int) -> None:
+    global _open_sessions
+    with _lib_lock:
+        _open_sessions += delta
+
 # Try to import pkcs11 - it's optional
 PKCS11_AVAILABLE = False
 ALGORITHM_TO_PKCS11 = {}
@@ -36,7 +53,8 @@ _ML_DSA_KEY_TYPE = None
 
 try:
     import pkcs11
-    from pkcs11 import KeyType, Attribute, Mechanism, MechanismFlag, ObjectClass
+    from pkcs11 import KeyType, Attribute, CertificateType, Mechanism, MechanismFlag, ObjectClass
+    from pkcs11.exceptions import FunctionNotSupported
     from pkcs11.util.rsa import encode_rsa_public_key
     from pkcs11.util.ec import encode_ec_public_key, encode_named_curve_parameters
     PKCS11_AVAILABLE = True
@@ -101,14 +119,25 @@ except ImportError:
     pkcs11 = None
 
 
-def cryptoki_library(module_path: str):
+def cryptoki_library(module_path: str, refresh: bool = False):
     """The PKCS#11 library as initialized by this process.
 
     Cryptoki leaves an initialized library undefined in a forked child, which must
     call C_Initialize itself; one that refuses (no fork detection) keeps its own state.
+
+    refresh: finalize the library this process initialized and initialize it again.
+    A module only reads the token's objects when its instance is created, so this is
+    the only way a server process sees a token that changed outside it. Skipped while
+    any session is open here, because dropping the module would invalidate it -- the
+    stale view is then better than breaking a call in flight.
     """
     pid = os.getpid()
     owner = _initialized_by.get(module_path)
+    if refresh and owner == pid and _open_sessions == 0:
+        with _lib_lock:
+            pkcs11.unload(module_path)
+            _initialized_by.pop(module_path, None)
+            owner = None
     if owner is None or owner == pid:
         lib = pkcs11.lib(module_path)
     else:
@@ -143,6 +172,10 @@ class Pkcs11Provider(BaseHsmProvider):
     SIGNS_BRAINPOOL = True
     SIGNS_ML_DSA = bool(ML_DSA_PARAMETER_SETS)
     ML_DSA_LIBRARY = 'python-pkcs11 0.9.5'
+
+    # PIV Applet's certificate containers, keyed by the PKCS#15 id OpenSC gives each
+    # slot's key (CKA_ID 01..04 == slots 9A/9C/9D/9E).
+    PIV_SLOTS = {'01': '9A', '02': '9C', '03': '9D', '04': '9E'}
     
     def __init__(self, config: Dict[str, Any]):
         if not PKCS11_AVAILABLE:
@@ -178,12 +211,14 @@ class Pkcs11Provider(BaseHsmProvider):
         self._token = None
         self._session = None
         self.list_errors: List[str] = []
+        # Set by HsmService when the caller must decide from the token's current objects.
+        self.fresh_view = False
     
     def connect(self) -> bool:
         """Connect to HSM and open session"""
         try:
             # Load PKCS#11 library
-            self._lib = cryptoki_library(self.module_path)
+            self._lib = cryptoki_library(self.module_path, refresh=self.fresh_view)
             
             # Find token
             if self.slot_index is not None:
@@ -196,6 +231,7 @@ class Pkcs11Provider(BaseHsmProvider):
             
             # Open session
             self._session = self._token.open(rw=True, user_pin=self.user_pin)
+            _count_session(1)
             self._connected = True
             
             logger.info(f"Connected to PKCS#11 token: {self.token_label}")
@@ -212,6 +248,7 @@ class Pkcs11Provider(BaseHsmProvider):
         """Close session"""
         if self._session:
             safe_call(self._session.close)
+            _count_session(-1)
         self._session = None
         self._token = None
         self._lib = None
@@ -647,7 +684,127 @@ class Pkcs11Provider(BaseHsmProvider):
             
         except pkcs11.PKCS11Error as e:
             raise HsmOperationError(f"Failed to get public key: {str(e)}")
-    
+
+    def get_certificate(self, key_identifier: str) -> Optional[bytes]:
+        """DER of the certificate object carrying this key id, or None."""
+        if not self._session:
+            raise HsmOperationError("Not connected")
+
+        try:
+            key_id = bytes.fromhex(key_identifier)
+            for obj in self._session.get_objects({
+                Attribute.CLASS: ObjectClass.CERTIFICATE,
+                Attribute.ID: key_id
+            }):
+                value = self._attr(obj, Attribute.VALUE)
+                if value:
+                    return bytes(value)
+            return None
+
+        except pkcs11.PKCS11Error as e:
+            raise HsmOperationError(f"Failed to read certificate: {str(e)}")
+
+    def store_certificate(self, key_identifier: str, cert_der: bytes,
+                          label: Optional[str] = None) -> None:
+        """Store the certificate at the key's id (PKCS#15 maps it to the same PIV slot)."""
+        if not self._session:
+            raise HsmOperationError("Not connected")
+
+        try:
+            attrs = {
+                Attribute.CLASS: ObjectClass.CERTIFICATE,
+                # CKA_CERTIFICATE_TYPE is required by SoftHSM and harmless elsewhere
+                Attribute.CERTIFICATE_TYPE: CertificateType.X_509,
+                Attribute.ID: bytes.fromhex(key_identifier),
+                Attribute.VALUE: cert_der,
+                Attribute.TOKEN: True,
+            }
+            # CKA_SUBJECT is a required certificate attribute (PKCS#11 spec):
+            # SoftHSM refuses the object without it, so it is read out of the DER.
+            from asn1crypto.x509 import Certificate as AsnCertificate
+            attrs[Attribute.SUBJECT] = AsnCertificate.load(cert_der).subject.dump()
+            if label:
+                attrs[Attribute.LABEL] = label
+            self._session.create_object(attrs)
+            logger.info(f"Stored certificate at key id {key_identifier}")
+
+        except FunctionNotSupported:
+            self._store_certificate_with_piv_tool(key_identifier, cert_der)
+        except pkcs11.PKCS11Error as e:
+            raise HsmOperationError(f"Failed to store certificate: {str(e) or type(e).__name__}")
+
+    def _store_certificate_with_piv_tool(self, key_identifier: str, cert_der: bytes) -> None:
+        """Write the certificate into the PIV slot that holds this key, with piv-tool.
+
+        OpenSC emulates PKCS#15 on PIV cards and ships no pkcs15init profile for them,
+        so creating a token object over PKCS#11 cannot reach the card; the PIV container
+        itself is writable. piv-tool exits non-zero even when it did write the object,
+        so the write is judged by reading the certificate back after re-initializing the
+        module. piv-tool cannot name the object, so the label is not carried over.
+        """
+        slot = self.PIV_SLOTS.get(key_identifier)
+        tool = shutil.which('piv-tool')
+        if not slot or not tool:
+            raise HsmOperationError(
+                "This token cannot store certificates over PKCS#11 and key id "
+                f"{key_identifier} has no writable PIV slot")
+
+        from cryptography import x509
+        from cryptography.hazmat.primitives import serialization
+        pem = x509.load_der_x509_certificate(cert_der).public_bytes(serialization.Encoding.PEM)
+        fd, path = tempfile.mkstemp(prefix='ucm-token-cert-', suffix='.pem')
+        try:
+            with os.fdopen(fd, 'wb') as handle:
+                os.chmod(path, 0o600)
+                handle.write(pem)
+            run = subprocess.run([tool, '-C', slot, '-i', path], capture_output=True,
+                                 text=True, timeout=120)
+            logger.info("piv-tool wrote slot %s: rc=%s %s", slot, run.returncode,
+                        (run.stderr or run.stdout).strip()[-200:])
+        except subprocess.TimeoutExpired:
+            raise HsmOperationError("Timed out writing the certificate to the token")
+        finally:
+            Path(path).unlink(missing_ok=True)
+
+        # The session this provider already holds carries the token's earlier object
+        # list, so verify through a session opened on a re-initialized module.
+        self.disconnect()
+        self.fresh_view = True
+        try:
+            self.connect()
+            stored = self.get_certificate(key_identifier)
+        finally:
+            self.fresh_view = False
+        if stored != cert_der:
+            raise HsmOperationError(
+                f"piv-tool wrote slot {slot} but the token reads back "
+                + ('a different certificate' if stored else 'no certificate'))
+        logger.info("Stored certificate in PIV slot %s (key id %s)", slot, key_identifier)
+
+    def delete_certificate(self, key_identifier: str) -> int:
+        """Remove certificate objects at this key id; returns how many were removed."""
+        if not self._session:
+            raise HsmOperationError("Not connected")
+
+        try:
+            key_id = bytes.fromhex(key_identifier)
+            removed = 0
+            for obj in self._session.get_objects({
+                Attribute.CLASS: ObjectClass.CERTIFICATE,
+                Attribute.ID: key_id
+            }):
+                obj.destroy()
+                removed += 1
+            return removed
+
+        except FunctionNotSupported:
+            # PIV containers cannot be emptied over PKCS#11; the overwrite path writes
+            # the replacement certificate over the existing one instead.
+            logger.info("Token cannot remove objects over PKCS#11: leaving the certificate in place")
+            return 0
+        except pkcs11.PKCS11Error as e:
+            raise HsmOperationError(f"Failed to delete certificate: {str(e) or type(e).__name__}")
+
     def sign(
         self,
         key_identifier: str,

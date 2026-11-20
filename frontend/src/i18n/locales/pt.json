@@ -1159,7 +1159,13 @@
     "uniqueSubjectChanged": "Definição de sujeito único atualizada",
     "uniqueSubjectChangeFailed": "Não foi possível atualizar a definição de sujeito único",
     "uniqueSubjectShared_one": "{{count}} sujeito já é usado por várias entidades: {{examples}}. Nada indica a qual delas se destina um novo certificado: as renovações dos seus certificados são recusadas tal como estão, e apenas uma emissão manual ou uma assinatura de CSR do mesmo passa, com a derrogação",
-    "uniqueSubjectShared_other": "{{count}} sujeitos já são usados por várias entidades, entre eles {{examples}}. Nada indica a qual delas se destina um novo certificado: as renovações dos seus certificados são recusadas tal como estão, e apenas uma emissão manual ou uma assinatura de CSR dos mesmos passa, com a derrogação"
+    "uniqueSubjectShared_other": "{{count}} sujeitos já são usados por várias entidades, entre eles {{examples}}. Nada indica a qual delas se destina um novo certificado: as renovações dos seus certificados são recusadas tal como estão, e apenas uma emissão manual ou uma assinatura de CSR dos mesmos passa, com a derrogação",
+    "tokenCertAlready": "O token já contém este certificado",
+    "tokenCertConflictConfirm": "O slot do token já contém um certificado: {{subject}} (serial {{serial}}, válido até {{notAfter}}). Substituí-lo pelo novo certificado da CA?",
+    "tokenCertUploadFailed": "CA criada, mas o certificado não foi armazenado no token: {{error}}",
+    "tokenCertUploaded": "Certificado armazenado no token",
+    "updateTokenCert": "Atualizar certificado no token",
+    "updateTokenCertHint": "Gravar o novo certificado da CA no slot do token que contém sua chave de assinatura"
   },
   "csrs": {
     "uploadCSR": "Carregar CSR",

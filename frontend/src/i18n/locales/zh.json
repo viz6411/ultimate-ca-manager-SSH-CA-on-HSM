@@ -1159,7 +1159,13 @@
     "uniqueSubjectChanged": "唯一主题设置已更新",
     "uniqueSubjectChangeFailed": "无法更新唯一主题设置",
     "uniqueSubjectShared_one": "有 {{count}} 个主题已被多个实体使用：{{examples}}。无法判断新证书属于哪一个：这些证书的续期将按原样被拒绝，只有手动签发或对其进行 CSR 签名才能通过，且需使用覆盖选项",
-    "uniqueSubjectShared_other": "有 {{count}} 个主题已被多个实体使用，包括 {{examples}}。无法判断新证书属于哪一个：这些证书的续期将按原样被拒绝，只有手动签发或对其进行 CSR 签名才能通过，且需使用覆盖选项"
+    "uniqueSubjectShared_other": "有 {{count}} 个主题已被多个实体使用，包括 {{examples}}。无法判断新证书属于哪一个：这些证书的续期将按原样被拒绝，只有手动签发或对其进行 CSR 签名才能通过，且需使用覆盖选项",
+    "tokenCertAlready": "令牌中已有此证书",
+    "tokenCertConflictConfirm": "令牌槽位中已有证书：{{subject}}（序列号 {{serial}}，有效期至 {{notAfter}}）。是否用新的CA证书替换？",
+    "tokenCertUploadFailed": "CA已创建，但证书未存储到令牌：{{error}}",
+    "tokenCertUploaded": "证书已存储在令牌上",
+    "updateTokenCert": "更新令牌上的证书",
+    "updateTokenCertHint": "将新的CA证书写入持有其签名密钥的令牌槽位"
   },
   "csrs": {
     "uploadCSR": "上传CSR",

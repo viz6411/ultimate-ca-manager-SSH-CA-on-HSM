@@ -1159,7 +1159,13 @@
     "uniqueSubjectChanged": "サブジェクトの一意性の設定を更新しました",
     "uniqueSubjectChangeFailed": "サブジェクトの一意性の設定を更新できませんでした",
     "uniqueSubjectShared_one": "{{count}} 件のサブジェクトが複数のエンティティですでに使用されています: {{examples}}。新しい証明書がどのエンティティのものか判別できないため、これらの証明書の更新はそのままでは拒否されます。手動発行または CSR の署名のみ、上書きを指定すれば実行できます",
-    "uniqueSubjectShared_other": "{{count}} 件のサブジェクトが複数のエンティティですでに使用されています（例: {{examples}}）。新しい証明書がどのエンティティのものか判別できないため、これらの証明書の更新はそのままでは拒否されます。手動発行または CSR の署名のみ、上書きを指定すれば実行できます"
+    "uniqueSubjectShared_other": "{{count}} 件のサブジェクトが複数のエンティティですでに使用されています（例: {{examples}}）。新しい証明書がどのエンティティのものか判別できないため、これらの証明書の更新はそのままでは拒否されます。手動発行または CSR の署名のみ、上書きを指定すれば実行できます",
+    "tokenCertAlready": "トークンには既にこの証明書があります",
+    "tokenCertConflictConfirm": "トークンスロットには既に証明書があります：{{subject}}（シリアル {{serial}}、有効期限 {{notAfter}}）。新しいCA証明書に置き換えますか？",
+    "tokenCertUploadFailed": "CAは作成しましたが、証明書をトークンに保存できませんでした：{{error}}",
+    "tokenCertUploaded": "トークンに証明書を保存しました",
+    "updateTokenCert": "トークン上の証明書を更新",
+    "updateTokenCertHint": "署名鍵を保持するトークンスロットに新しいCA証明書を書き込む"
   },
   "csrs": {
     "uploadCSR": "CSRをアップロード",

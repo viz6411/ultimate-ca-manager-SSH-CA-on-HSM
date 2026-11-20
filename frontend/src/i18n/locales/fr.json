@@ -1099,7 +1099,13 @@
     "uniqueSubjectChanged": "Réglage du sujet unique mis à jour",
     "uniqueSubjectChangeFailed": "Le réglage du sujet unique n'a pas pu être mis à jour",
     "uniqueSubjectShared_one": "{{count}} sujet est déjà porté par plusieurs entités : {{examples}}. Rien ne dit à laquelle un nouveau certificat est destiné : les renouvellements de ses certificats sont refusés tels quels, seules une émission manuelle ou une signature de CSR de ce sujet passent, avec la dérogation",
-    "uniqueSubjectShared_other": "{{count}} sujets sont déjà portés par plusieurs entités, dont {{examples}}. Rien ne dit à laquelle un nouveau certificat est destiné : les renouvellements de leurs certificats sont refusés tels quels, seules une émission manuelle ou une signature de CSR de ces sujets passent, avec la dérogation"
+    "uniqueSubjectShared_other": "{{count}} sujets sont déjà portés par plusieurs entités, dont {{examples}}. Rien ne dit à laquelle un nouveau certificat est destiné : les renouvellements de leurs certificats sont refusés tels quels, seules une émission manuelle ou une signature de CSR de ces sujets passent, avec la dérogation",
+    "tokenCertAlready": "Le token contient déjà ce certificat",
+    "tokenCertConflictConfirm": "Le slot du token contient déjà un certificat : {{subject}} (série {{serial}}, valide jusqu'au {{notAfter}}). Le remplacer par le nouveau certificat de l'AC ?",
+    "tokenCertUploadFailed": "AC créée, mais le certificat n'a pas été stocké sur le token : {{error}}",
+    "tokenCertUploaded": "Certificat stocké sur le token",
+    "updateTokenCert": "Mettre à jour le certificat sur le token",
+    "updateTokenCertHint": "Écrire le nouveau certificat de l'AC dans le slot du token qui contient sa clé de signature"
   },
   "certificates": {
     "createCertificate": "Créer un certificat",

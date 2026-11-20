@@ -15,7 +15,10 @@ from utils.pagination import parse_request_pagination
 from utils.response import success_response, error_response, created_response, no_content_response
 from utils.pagination import paginate
 from utils.dn_validation import validate_dn_field, validate_dn
-from services.hsm.base_provider import HsmKeyExistsError
+from services.hsm.base_provider import (
+    HsmKeyExistsError, HsmError, HsmConfigError, HsmConnectionError,
+    HsmKeyNotFoundError, HsmOperationError, TokenCertExistsError,
+)
 from services.hsm.key_binding import HsmKeyBound
 from utils.process_lock import LockBusyError
 from utils.protocol_url import get_protocol_base_url
@@ -44,12 +47,26 @@ from models.hsm import HsmKey, HsmProvider
 from services.hsm import HsmService
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import dsa
 from utils import key_algorithms, notices as notices_mod
 from utils.issuance_defaults import default_issue_key_id, digest_for_key, stronger_digest
 from websocket.emitters import on_ca_created, on_ca_updated, on_ca_deleted
 
 logger = logging.getLogger(__name__)
+
+
+def _upload_ca_cert_to_token(ca, overwrite: bool) -> dict:
+    """Upload outcome only: the created CA is never rolled back by a failed upload."""
+    cert_der = x509.load_pem_x509_certificate(
+        base64.b64decode(ca.crt), default_backend()
+    ).public_bytes(serialization.Encoding.DER)
+    try:
+        return HsmService.store_token_certificate(int(ca.hsm_key_id), cert_der, overwrite=overwrite)
+    except TokenCertExistsError as exc:  # landed on the token between pre-check and upload
+        return {'ok': False, 'error': 'token_cert_exists', 'existing': exc.existing}
+    except (HsmConnectionError, HsmOperationError) as exc:
+        return {'ok': False, 'error': str(exc) or exc.__class__.__name__}
 
 
 def _needs_protocol_url(current_url):
@@ -428,6 +445,8 @@ def create_ca():
             refusal = hsm_binding_refusal('an X.509 CA')
             if refusal:
                 return refusal
+        update_token_cert = bool(data.get('updateTokenCert') or data.get('update_token_cert'))
+        overwrite_token_cert = bool(data.get('overwriteTokenCert') or data.get('overwrite_token_cert'))
 
         # Mutually exclusive: local vs existing-HSM-key vs new-HSM-key
         modes = []
@@ -639,6 +658,34 @@ def create_ca():
             if refusal:
                 return error_response(refusal, 400)
 
+        # Store-the-CA-certificate-on-the-token: a PKCS#11-only option on the
+        # existing-key path. The conflict is raised before the CA is created,
+        # so a refused upload never leaves a half-finished CA behind.
+        if update_token_cert:
+            if not hsm_key_id:
+                return error_response(
+                    'update_token_cert is available only with an existing HSM key', 400)
+            if data.get('type') == 'external':
+                return error_response(
+                    'update_token_cert needs a certificate UCM signs now; '
+                    'external CAs receive theirs later', 400)
+            if chosen_provider and chosen_provider.type != 'pkcs11':
+                return error_response(
+                    'Storing the CA certificate on the token is only available for '
+                    'PKCS#11 providers', 400)
+            if not overwrite_token_cert:
+                try:
+                    existing_cert = HsmService.token_certificate(int(hsm_key_id))
+                except HsmError as exc:
+                    # An unreadable slot is not a conflict; the upload step will
+                    # surface the real token error if the token is down.
+                    logger.info(f"Token certificate pre-check skipped: {exc}")
+                    existing_cert = None
+                if existing_cert:
+                    return error_response(
+                        'The token slot already holds a certificate; retry with '
+                        'overwriteTokenCert to replace it',
+                        409, details={'existing': existing_cert})
         raw_ku = data.get('keyUsage')
         if raw_ku is None and data.get('key_usage') is not None:
             raw_ku = data.get('key_usage')
@@ -721,6 +768,12 @@ def create_ca():
         # Single lifecycle event — bus fans out to webhook + email + WebSocket.
         # Snapshot before emit: subscribers may commit and expire the instance.
         ca_dict = ca.to_dict()
+
+        # The CA is already committed; a failed token upload rides along as a
+        # warning in the response and is retried via <ca>/hsm/upload-cert.
+        if update_token_cert and ca.hsm_key_id and ca.crt:
+            ca_dict['token_cert_upload'] = _upload_ca_cert_to_token(ca, overwrite_token_cert)
+
         from services.webhook_service import emit_ca_created
         emit_ca_created(ca_dict, actor=username)
 
@@ -742,6 +795,43 @@ def create_ca():
     except Exception as e:
         logger.error(f"Failed to create CA: {e}")
         return error_response("Failed to create CA", 500)
+
+
+@bp.route('/api/v2/cas/<int:ca_id>/hsm/upload-cert', methods=['POST'])
+@require_auth(['write:cas'])
+def upload_ca_cert_to_token(ca_id):
+    """(Re)write the CA certificate into the token slot holding its signing key.
+
+    Same conflict rules as creation: a different certificate already in the slot
+    is a 409 carrying its summary unless overwriteTokenCert is given. Re-running
+    with the CA's own certificate already on the token answers ok without a
+    conflict (the retry must be idempotent)."""
+    ca = CAService.get_ca(ca_id)
+    if not ca:
+        return error_response('CA not found', 404)
+    if not ca.hsm_key_id:
+        return error_response('This CA is not backed by an HSM key', 400)
+    if not ca.crt:
+        return error_response('CA is awaiting its certificate', 400)
+
+    data = request.get_json(silent=True) or {}
+    overwrite = bool(data.get('overwriteTokenCert') or data.get('overwrite_token_cert'))
+    try:
+        result = _upload_ca_cert_to_token(ca, overwrite)
+    except HsmConfigError as exc:
+        return error_response(str(exc), 400)
+    except HsmKeyNotFoundError as exc:
+        return error_response(str(exc), 404)
+    if result.get('ok'):
+        message = ('Certificate stored on the token' if result.get('uploaded')
+                   else 'The token already holds this certificate')
+        return success_response(data=result, message=message)
+    existing = result.get('existing')
+    if existing:
+        return error_response(
+            'The token slot already holds a certificate; retry with '
+            'overwriteTokenCert to replace it', 409, details={'existing': existing})
+    return error_response(result.get('error') or 'Token upload failed', 502)
 
 
 @bp.route('/api/v2/cas/<int:ca_id>', methods=['GET'])

@@ -1159,7 +1159,13 @@
     "uniqueSubjectChanged": "Einstellung für eindeutiges Subject aktualisiert",
     "uniqueSubjectChangeFailed": "Die Einstellung für eindeutiges Subject konnte nicht aktualisiert werden",
     "uniqueSubjectShared_one": "{{count}} Subject wird bereits von mehreren Entitäten getragen: {{examples}}. Nichts zeigt, für welche ein neues Zertifikat bestimmt ist: Erneuerungen seiner Zertifikate werden so abgelehnt, und nur eine manuelle Ausstellung oder eine CSR-Signierung dafür geht mit der Ausnahmebestätigung durch",
-    "uniqueSubjectShared_other": "{{count}} Subjects werden bereits von mehreren Entitäten getragen, darunter {{examples}}. Nichts zeigt, für welche ein neues Zertifikat bestimmt ist: Erneuerungen ihrer Zertifikate werden so abgelehnt, und nur eine manuelle Ausstellung oder eine CSR-Signierung dafür geht mit der Ausnahmebestätigung durch"
+    "uniqueSubjectShared_other": "{{count}} Subjects werden bereits von mehreren Entitäten getragen, darunter {{examples}}. Nichts zeigt, für welche ein neues Zertifikat bestimmt ist: Erneuerungen ihrer Zertifikate werden so abgelehnt, und nur eine manuelle Ausstellung oder eine CSR-Signierung dafür geht mit der Ausnahmebestätigung durch",
+    "tokenCertAlready": "Der Token enthält bereits dieses Zertifikat",
+    "tokenCertConflictConfirm": "Der Token-Slot enthält bereits ein Zertifikat: {{subject}} (Seriennummer {{serial}}, gültig bis {{notAfter}}). Durch das neue CA-Zertifikat ersetzen?",
+    "tokenCertUploadFailed": "CA erstellt, aber das Zertifikat wurde nicht auf dem Token gespeichert: {{error}}",
+    "tokenCertUploaded": "Zertifikat auf dem Token gespeichert",
+    "updateTokenCert": "Zertifikat auf dem Token aktualisieren",
+    "updateTokenCertHint": "Das neue CA-Zertifikat in den Token-Slot schreiben, der den Signaturschlüssel enthält"
   },
   "csrs": {
     "uploadCSR": "CSR hochladen",

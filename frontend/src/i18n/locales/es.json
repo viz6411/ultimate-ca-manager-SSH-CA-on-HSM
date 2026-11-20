@@ -1159,7 +1159,13 @@
     "uniqueSubjectChanged": "Ajuste de sujeto único actualizado",
     "uniqueSubjectChangeFailed": "No se pudo actualizar el ajuste de sujeto único",
     "uniqueSubjectShared_one": "{{count}} sujeto ya lo llevan varias entidades: {{examples}}. Nada indica para cuál es un nuevo certificado: las renovaciones de sus certificados se rechazan tal cual, y solo una emisión manual o una firma de CSR de este sujeto prospera, con la excepción",
-    "uniqueSubjectShared_other": "{{count}} sujetos ya los llevan varias entidades, entre ellos {{examples}}. Nada indica para cuál es un nuevo certificado: las renovaciones de sus certificados se rechazan tal cual, y solo una emisión manual o una firma de CSR de estos sujetos prospera, con la excepción"
+    "uniqueSubjectShared_other": "{{count}} sujetos ya los llevan varias entidades, entre ellos {{examples}}. Nada indica para cuál es un nuevo certificado: las renovaciones de sus certificados se rechazan tal cual, y solo una emisión manual o una firma de CSR de estos sujetos prospera, con la excepción",
+    "tokenCertAlready": "El token ya contiene este certificado",
+    "tokenCertConflictConfirm": "El slot del token ya contiene un certificado: {{subject}} (serie {{serial}}, válido hasta {{notAfter}}). ¿Reemplazarlo por el nuevo certificado de la CA?",
+    "tokenCertUploadFailed": "CA creada, pero el certificado no se almacenó en el token: {{error}}",
+    "tokenCertUploaded": "Certificado almacenado en el token",
+    "updateTokenCert": "Actualizar certificado en el token",
+    "updateTokenCertHint": "Escribir el nuevo certificado de la CA en el slot del token que contiene su clave de firma"
   },
   "csrs": {
     "uploadCSR": "Subir CSR",

@@ -23,7 +23,8 @@ from services import compliance_signer
 from services.hsm.ecdsa_signature import coordinate_bytes, ecdsa_to_der
 from services.hsm.base_provider import (
     BaseHsmProvider, HsmKeyInfo, brainpool_refusal, mldsa_refusal,
-    HsmError, HsmConnectionError, HsmOperationError, HsmConfigError, HsmSecretUnreadable
+    HsmError, HsmConnectionError, HsmOperationError, HsmConfigError, HsmSecretUnreadable,
+    HsmKeyNotFoundError, TokenCertExistsError
 )
 from utils import key_algorithms
 from utils.datetime_utils import utc_now
@@ -138,16 +139,20 @@ class HsmService:
         return list(cls._provider_registry.keys())
     
     @classmethod
-    def _get_provider_instance(cls, provider: HsmProvider) -> BaseHsmProvider:
+    def _get_provider_instance(cls, provider: HsmProvider,
+                               fresh_view: bool = False) -> BaseHsmProvider:
         """
         Get provider instance for a given HsmProvider model.
         
         Args:
             provider: HsmProvider model instance
-            
+            fresh_view: the caller reads the token in order to decide something about
+                it, so the provider must see the token as it is now, not as this
+                process last read it.
+
         Returns:
             Configured provider instance
-            
+
         Raises:
             HsmConfigError: If provider type not registered
         """
@@ -163,7 +168,9 @@ class HsmService:
             config = provider.connection_config()
         except SecretUnreadable as e:
             raise HsmSecretUnreadable(str(e)) from e
-        return provider_class(config)
+        instance = provider_class(config)
+        instance.fresh_view = fresh_view
+        return instance
     
     # =========================================================================
     # Provider CRUD
@@ -363,7 +370,7 @@ class HsmService:
             raise ValueError(f"Provider not found: {provider_id}")
         
         try:
-            hsm = cls._get_provider_instance(provider)
+            hsm = cls._get_provider_instance(provider, fresh_view=True)
             result = hsm.test_connection()
             
             # Update provider status
@@ -813,7 +820,8 @@ class HsmService:
             refuse_softhsm_in_ha()
         
         try:
-            hsm = cls._get_provider_instance(provider)
+            # Key sync is what notices a token changed outside this process.
+            hsm = cls._get_provider_instance(provider, fresh_view=True)
             with hsm:
                 hsm_keys = hsm.list_keys()
             listing_errors = len(getattr(hsm, 'list_errors', None) or [])
@@ -897,6 +905,66 @@ class HsmService:
             db.session.execute(update(table).where(table.c.id == provider_id)
                                .values(id=table.c.id, updated_at=table.c.updated_at))
         return HsmProvider.query.filter_by(id=provider_id).with_for_update().one_or_none()
+
+    def _cert_slot(hsm_key_id: int) -> HsmKey:
+        """The HsmKey row whose provider can hold a certificate in the key's slot."""
+        key = db.session.get(HsmKey, hsm_key_id)
+        if not key:
+            raise HsmKeyNotFoundError(f"HSM key not found: {hsm_key_id}")
+        if key.provider.type != 'pkcs11':
+            raise HsmConfigError(
+                "Storing the CA certificate on the token is only available for "
+                f"PKCS#11 providers, not {key.provider.type}")
+        return key
+
+    @staticmethod
+    def _certificate_summary(cert_der: bytes) -> Dict[str, Any]:
+        """What a stored certificate is: subject, serial, validity — for conflict UI."""
+        from cryptography import x509
+        try:
+            cert = x509.load_der_x509_certificate(cert_der)
+            not_after = getattr(cert, 'not_valid_after_utc', None)
+            if not_after is None:  # cryptography < 42 fallbacks
+                not_after = cert.not_valid_after
+            return {
+                'subject': cert.subject.rfc4514_string(),
+                'serial': f'{cert.serial_number:x}',
+                'not_after': not_after.isoformat(),
+            }
+        except Exception:
+            # A cert object the parser cannot read still occupies the slot.
+            return {'subject': '(unreadable certificate)', 'serial': '', 'not_after': ''}
+
+    @classmethod
+    def token_certificate(cls, hsm_key_id: int) -> Optional[Dict[str, Any]]:
+        """Summary of the certificate the key's slot on the token holds now, if any."""
+        key = cls._cert_slot(hsm_key_id)
+        with cls._get_provider_instance(key.provider, fresh_view=True) as hsm:
+            der = hsm.get_certificate(key.key_identifier)
+        return cls._certificate_summary(der) if der else None
+
+    @classmethod
+    def store_token_certificate(cls, hsm_key_id: int, cert_der: bytes,
+                                overwrite: bool = False) -> Dict[str, Any]:
+        """
+        Write a CA certificate into the token slot that holds its signing key.
+
+        Returns {'ok': True, 'uploaded': bool, 'replaced': bool} ('already' when the
+        slot holds exactly this certificate). Raises TokenCertExistsError (with the
+        current certificate's summary in .existing) when the slot holds a different
+        certificate and overwrite was not accepted.
+        """
+        key = cls._cert_slot(hsm_key_id)
+        with cls._get_provider_instance(key.provider, fresh_view=True) as hsm:
+            existing = hsm.get_certificate(key.key_identifier)
+            if existing and existing == cert_der:
+                return {'ok': True, 'uploaded': False, 'already': True}
+            if existing and not overwrite:
+                raise TokenCertExistsError(cls._certificate_summary(existing))
+            if existing:
+                hsm.delete_certificate(key.key_identifier)
+            hsm.store_certificate(key.key_identifier, cert_der, label=key.label)
+        return {'ok': True, 'uploaded': True, 'replaced': bool(existing)}
 
     @staticmethod
     def _referenced_hsm_key_ids() -> set:

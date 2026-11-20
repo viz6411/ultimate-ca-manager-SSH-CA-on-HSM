@@ -143,7 +143,8 @@ def test_sync_route_audits_changed_referenced_key_ids(app, auth_client, monkeypa
             db.session.commit()
         listed = _info('a')
         listed.public_key_pem = new_pem()
-        monkeypatch.setattr(HsmService, '_get_provider_instance', lambda *a: _ListingProvider([listed]))
+        # **kw: sync reads the token through a fresh provider view (fresh_view)
+        monkeypatch.setattr(HsmService, '_get_provider_instance', lambda *a, **kw: _ListingProvider([listed]))
         with patch('api.v2.hsm.AuditService.log_action') as audit:
             response = auth_client.post(f'/api/v2/hsm/providers/{pid}/sync')
         assert response.status_code == 200

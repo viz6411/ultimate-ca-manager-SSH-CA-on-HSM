@@ -139,6 +139,25 @@ The provider is then created on the HSM page: type `PKCS#11`, `module_path` the 
 
 In HA mode, a CA cannot be created on a key of a local smart card reader provider, OpenSC (`opensc-pkcs11.so`) or YubiKey PIV (`libykcs11.so`): the reader is attached to one host.
 
+A `pcscd` that owns the reader can live in its own container; both containers share its socket:
+
+```yaml
+services:
+  pcscd:
+    build: ./pcscd-bridge      # privileged: it owns /dev/bus/usb
+    privileged: true
+    devices:
+      - /dev/bus/usb
+    volumes:
+      - pcscd_run:/run/pcscd
+  ucm:
+    image: neyslim/ultimate-ca-manager:latest
+    volumes:
+      - pcscd_run:/run/pcscd   # the same socket pcscd listens on
+```
+
+Signing asks the card for every certificate, so a `pcscd` that is down or a card nobody has touched since the reader was powered shows up as a signing error, not as a broken CA.
+
 ## Cloud HSM
 
 Configure cloud HSM providers via the UCM web UI (**Modules** > **Administration** > **HSM Management**):

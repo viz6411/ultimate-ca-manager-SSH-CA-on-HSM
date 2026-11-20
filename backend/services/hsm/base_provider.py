@@ -259,6 +259,14 @@ class HsmKeyNotFoundError(HsmError):
     pass
 
 
+class TokenCertExistsError(HsmOperationError):
+    """The key's slot already holds a certificate and no overwrite was accepted"""
+
+    def __init__(self, existing: Dict[str, Any]):
+        self.existing = existing
+        super().__init__("The token slot already holds a certificate")
+
+
 class HsmConfigError(HsmError):
     """HSM configuration invalid"""
     pass

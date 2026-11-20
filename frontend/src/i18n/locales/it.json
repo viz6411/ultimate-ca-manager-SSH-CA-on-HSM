@@ -1159,7 +1159,13 @@
     "uniqueSubjectChanged": "Impostazione del soggetto univoco aggiornata",
     "uniqueSubjectChangeFailed": "Impossibile aggiornare l'impostazione del soggetto univoco",
     "uniqueSubjectShared_one": "{{count}} soggetto è già presente in più entità: {{examples}}. Nulla indica a quale sia destinato un nuovo certificato: i rinnovi dei suoi certificati vengono rifiutati così come sono e solo un'emissione manuale o una firma CSR di questo soggetto va a buon fine, con l'override",
-    "uniqueSubjectShared_other": "{{count}} soggetti sono già presenti in più entità, tra cui {{examples}}. Nulla indica a quale sia destinato un nuovo certificato: i rinnovi dei loro certificati vengono rifiutati così come sono e solo un'emissione manuale o una firma CSR di questi soggetti va a buon fine, con l'override"
+    "uniqueSubjectShared_other": "{{count}} soggetti sono già presenti in più entità, tra cui {{examples}}. Nulla indica a quale sia destinato un nuovo certificato: i rinnovi dei loro certificati vengono rifiutati così come sono e solo un'emissione manuale o una firma CSR di questi soggetti va a buon fine, con l'override",
+    "tokenCertAlready": "Il token contiene già questo certificato",
+    "tokenCertConflictConfirm": "Lo slot del token contiene già un certificato: {{subject}} (serie {{serial}}, valido fino al {{notAfter}}). Sostituirlo con il nuovo certificato CA?",
+    "tokenCertUploadFailed": "CA creata, ma il certificato non è stato memorizzato sul token: {{error}}",
+    "tokenCertUploaded": "Certificato memorizzato sul token",
+    "updateTokenCert": "Aggiorna il certificato sul token",
+    "updateTokenCertHint": "Scrivi il nuovo certificato CA nello slot del token che contiene la sua chiave di firma"
   },
   "csrs": {
     "uploadCSR": "Carica CSR",

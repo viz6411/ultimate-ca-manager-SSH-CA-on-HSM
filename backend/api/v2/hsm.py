@@ -21,6 +21,7 @@ from services.hsm.base_provider import (
     HsmError, HsmKeyExistsError, HsmConnectionError, HsmOperationError, HsmConfigError, HsmSecretUnreadable)
 from models import db
 from models.hsm import HsmProvider, HsmKey
+from models.ssh import SSHCertificateAuthority
 from services.audit_service import AuditService
 import logging
 

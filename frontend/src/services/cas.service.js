@@ -21,6 +21,13 @@ export const casService = {
     return apiClient.patch(`/cas/${id}`, data)
   },
 
+  // Write the CA certificate into the token slot holding its signing key.
+  // 409 comes back with details.existing (subject/serial/not_after) of the
+  // certificate already in the slot; overwrite: true replaces it.
+  async uploadTokenCert(id, data = {}) {
+    return apiClient.post(`/cas/${id}/hsm/upload-cert`, data)
+  },
+
   async delete(id) {
     return apiClient.delete(`/cas/${id}`)
   },
