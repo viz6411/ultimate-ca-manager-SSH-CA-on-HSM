@@ -670,6 +670,31 @@ result of the OPNsense file importer list such CAs in `unverifiable_parents`: `c
 (`id`, `name`), `algorithm` and `reason`. `POST /api/v2/cas/import` and
 `POST /api/v2/certificates/import` return the CA object with its `parent_candidate`.
 
+### Store the CA Certificate on the Token
+```http
+POST /api/v2/cas/{ca_id}/hsm/upload-cert
+Content-Type: application/json
+
+{ "overwriteTokenCert": false }
+```
+
+A CA whose signing key lives on a PKCS#11 token can carry its certificate in the same slot as
+the key — a PKCS#11 certificate object holding the key's `CKA_ID` — so a PIV card presents the
+certificate that matches its key instead of a placeholder. Needs `write:cas`; 400 for a CA no HSM
+key backs or one still awaiting its certificate, 400 for a provider that is not PKCS#11, 404 for a
+key row that is gone.
+
+The slot is read first: the CA's own certificate already there answers ok with `already`, a
+different one is `409` carrying that certificate's `subject`, `serial` and `not_after` in
+`details.existing`, and retrying with `overwriteTokenCert: true` replaces it; a token that refuses
+answers `502`. The CA and its certificate are untouched either way.
+
+`POST /api/v2/cas` does the same at creation: `updateTokenCert` writes the certificate the server
+has just signed into the key's slot, `overwriteTokenCert` accepts replacing what is already there,
+and a slot holding another certificate is refused `409` **before** the CA is created. A CA created
+whose write then failed reports it as `token_cert_upload` (`ok`, `uploaded`, `already`, `replaced`,
+or `error`) and the write is retried from the CA's details.
+
 ### Delete CA
 ```http
 DELETE /api/v2/cas/{ca_id}
