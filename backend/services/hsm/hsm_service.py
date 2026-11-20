@@ -906,6 +906,7 @@ class HsmService:
                                .values(id=table.c.id, updated_at=table.c.updated_at))
         return HsmProvider.query.filter_by(id=provider_id).with_for_update().one_or_none()
 
+    @staticmethod
     def _cert_slot(hsm_key_id: int) -> HsmKey:
         """The HsmKey row whose provider can hold a certificate in the key's slot."""
         key = db.session.get(HsmKey, hsm_key_id)
