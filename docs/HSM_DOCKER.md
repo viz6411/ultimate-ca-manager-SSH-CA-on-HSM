@@ -144,7 +144,8 @@ A `pcscd` that owns the reader can live in its own container; both containers sh
 ```yaml
 services:
   pcscd:
-    build: ./pcscd-bridge      # privileged: it owns /dev/bus/usb
+    build: ./pcscd-bridge      # an image of your own — this project does not ship one. pcscd
+                               # running in the foreground, privileged: it owns /dev/bus/usb
     privileged: true
     devices:
       - /dev/bus/usb
