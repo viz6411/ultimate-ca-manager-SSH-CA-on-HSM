@@ -965,7 +965,19 @@ class HsmService:
             replaced_from = cls._certificate_summary(existing) if existing else None
             if existing:
                 hsm.delete_certificate(key.key_identifier)
-            hsm.store_certificate(key.key_identifier, cert_der, label=key.label)
+            try:
+                hsm.store_certificate(key.key_identifier, cert_der, label=key.label)
+            except Exception as exc:  # noqa: BLE001 - a half-written slot is worse than a refused write
+                # A slot emptied and not refilled leaves the card without the certificate its key
+                # needs. Put back what was there; if that fails too, say which of the two happened.
+                if existing:
+                    try:
+                        hsm.store_certificate(key.key_identifier, existing, label=key.label)
+                    except Exception as restore_exc:  # noqa: BLE001
+                        logger.error("HSM key %s: the certificate write failed (%s) and the previous "
+                                     "certificate could not be restored (%s): the slot may be empty",
+                                     key.label, exc, restore_exc)
+                raise
         result = {'ok': True, 'uploaded': True, 'replaced': bool(existing)}
         if replaced_from:
             # What was in the slot before it was overwritten — the audit names it
