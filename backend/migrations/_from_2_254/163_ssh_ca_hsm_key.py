@@ -110,12 +110,14 @@ def refusal(conn):
     if 'hsm_keys' not in tables:
         return None
     named = []
+    # Both queries name hsm_key_id, so each table is read only where that column already exists.
     ssh_bound = TABLE in tables and 'hsm_key_id' in _columns(conn, TABLE)
-    if X509 in tables:
+    x509_bound = X509 in tables and 'hsm_key_id' in _columns(conn, X509)
+    if x509_bound:
         named += _named(_rows(conn, _SHARED), 'X.509 CAs')
     if ssh_bound:
         named += _named(_rows(conn, _SSH_SHARED), 'SSH CAs')
-    if X509 in tables and ssh_bound:
+    if x509_bound and ssh_bound:
         named += _named_cross(_rows(conn, _CROSS))
     return _refusal('; '.join(named)) if named else None
 
