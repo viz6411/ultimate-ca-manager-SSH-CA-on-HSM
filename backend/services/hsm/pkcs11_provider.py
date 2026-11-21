@@ -159,6 +159,26 @@ def cryptoki_library(module_path: str, refresh: bool = False):
     return lib
 
 
+# What a caller is told when the token refuses to open, named by the PKCS#11 return code:
+# the library's own text (module path, vendor detail) stays in the log.
+_CONNECT_MESSAGES = {
+    'TokenNotPresent': 'No token in the reader',
+    'TokenNotRecognised': 'The token in the reader was not recognised',
+    'DeviceRemoved': 'The reader or the token was removed',
+    'DeviceError': 'The reader reported an error',
+    'SlotIDInvalid': 'The configured PKCS#11 slot does not exist',
+    'PinIncorrect': 'The token rejected its PIN',
+    'PinInvalid': 'The token rejected its PIN',
+    'PinLenRange': 'The token PIN has the wrong length',
+    'PinLocked': 'The token PIN is locked',
+    'UserPinNotInitialized': 'The token has no user PIN set',
+    'TokenWriteProtected': 'The token is write protected',
+    'SessionCount': 'Another process already holds the token',
+    'SessionReadOnlyExists': 'Another process already holds the token',
+    'SessionReadWriteSOExists': 'Another process already holds the token',
+}
+
+
 class Pkcs11Provider(BaseHsmProvider):
     """
     PKCS#11 HSM Provider
@@ -242,16 +262,19 @@ class Pkcs11Provider(BaseHsmProvider):
             logger.info(f"Connected to PKCS#11 token: {self.token_label}")
             return True
             
+        except HsmConnectionError:
+            raise  # our own wording ("Slot 5 not found") is already what the operator needs
         except pkcs11.PKCS11Error as e:
             # The library's text carries the module path and vendor detail: it belongs in the log,
-            # not in a response body
+            # not in a response body. The caller gets the reason the return code names.
             self._connected = False
             logger.warning("PKCS#11 connection to %s failed: %s", self.module_path, e)
-            raise HsmConnectionError("PKCS#11 connection failed")
-        except Exception as e:  # noqa: BLE001 - same rule for anything the module raises
+            raise HsmConnectionError(
+                _CONNECT_MESSAGES.get(type(e).__name__, 'PKCS#11 connection failed')) from e
+        except Exception as e:  # noqa: BLE001 - same rule for anything else the module raises
             self._connected = False
             logger.warning("PKCS#11 connection to %s failed: %s", self.module_path, e)
-            raise HsmConnectionError("PKCS#11 connection failed")
+            raise HsmConnectionError('PKCS#11 connection failed') from e
     
     def disconnect(self) -> None:
         """Close session"""

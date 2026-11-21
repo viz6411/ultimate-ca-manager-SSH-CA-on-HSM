@@ -970,13 +970,22 @@ class HsmService:
             except Exception as exc:  # noqa: BLE001 - a half-written slot is worse than a refused write
                 # A slot emptied and not refilled leaves the card without the certificate its key
                 # needs. Put back what was there; if that fails too, say which of the two happened.
+                # The outcome travels with the exception (exc.slot_restored) so the audit can tell
+                # 'the card holds its old certificate again' from 'the card holds nothing'.
+                restored = None
                 if existing:
                     try:
                         hsm.store_certificate(key.key_identifier, existing, label=key.label)
+                        restored = True
                     except Exception as restore_exc:  # noqa: BLE001
+                        restored = False
                         logger.error("HSM key %s: the certificate write failed (%s) and the previous "
                                      "certificate could not be restored (%s): the slot may be empty",
                                      key.label, exc, restore_exc)
+                try:
+                    exc.slot_restored = restored
+                except AttributeError:  # an exception that refuses attributes loses only the wording
+                    pass
                 raise
         result = {'ok': True, 'uploaded': True, 'replaced': bool(existing)}
         if replaced_from:

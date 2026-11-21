@@ -2,11 +2,14 @@
 
 ``ssh_cas.key_source`` ('software' on every existing row) and ``ssh_cas.hsm_key_id`` (NULL),
 a foreign key to ``hsm_keys.id``; the unique index ``uq_ssh_cas_hsm_key_id`` binds a key to
-one SSH CA at most (NULLs stay distinct on both backends). 2.254 has no HSM SSH CA: no row moves.
+one SSH CA at most (NULLs stay distinct on both backends). A stock 2.254 has no HSM SSH CA: no row
+moves; a 2.254 build that added the columns itself can already hold SSH CAs on keys.
 
 ``uq_ca_hsm_key_id`` does the same for X.509 CAs. 2.x created it (partial) only on the databases its
 migration 035 upgraded: it is created, or replaced by the definition of a fresh install, on every one.
-Two X.509 CAs on one key refuse the upgrade before migration 300 writes anything (``refusal``).
+Two CAs on one key — two X.509, two SSH, or an X.509 CA and an SSH CA — refuse the upgrade before
+migration 300 writes anything (``refusal``), naming them. The cross pair is not caught by any index:
+2.254 builds without the 3.0 rule let one key sign an X.509 CA and an SSH CA.
 Idempotent, dual-backend (SQLite + PostgreSQL).
 """
 import logging
@@ -40,17 +43,33 @@ _SSH_SHARED = (f"SELECT c.hsm_key_id, NULL, c.id, c.descr FROM {TABLE} c "
                f"WHERE c.hsm_key_id IN (SELECT hsm_key_id FROM {TABLE} WHERE hsm_key_id IS NOT NULL "
                f"GROUP BY hsm_key_id HAVING COUNT(*) > 1) ORDER BY c.hsm_key_id, c.id")
 
+# And the pair no unique index can see, because the two rows live in different tables: one key
+# backing an X.509 CA and an SSH CA at once. 2.254 builds without the 3.0 rule offered exactly
+# that ('a key already signing an X.509 CA can sign SSH certificates too'), and a restore refuses
+# the same shape, so the upgrade has to name it too.
+_CROSS = (f"SELECT c.hsm_key_id, k.label, c.descr, c.id, s.descr, s.id FROM {X509} c "
+          f"JOIN {TABLE} s ON s.hsm_key_id = c.hsm_key_id "
+          f"LEFT JOIN hsm_keys k ON k.id = c.hsm_key_id WHERE c.hsm_key_id IS NOT NULL "
+          f"ORDER BY c.hsm_key_id, c.id, s.id")
+
+
+def _key_name(key_id, label):
+    return f"HSM key '{label}' (#{key_id})" if label else f"HSM key #{key_id}"
+
 
 def _named(rows, kind):
     """One sentence per key: which CAs share it. 'SSH CAs' / 'X.509 CAs' is the kind being named."""
     keys = {}
     for key_id, label, ca_id, descr in rows:
         keys.setdefault((key_id, label), []).append(f"'{descr}' (#{ca_id})")
-    fragments = []
-    for (key_id, label), cas in keys.items():
-        named = f"HSM key '{label}' (#{key_id})" if label else f"HSM key #{key_id}"
-        fragments.append(f"{named} backs {len(cas)} {kind}: {', '.join(cas)}")
-    return fragments
+    return [f"{_key_name(key_id, label)} backs {len(cas)} {kind}: {', '.join(cas)}"
+            for (key_id, label), cas in keys.items()]
+
+
+def _named_cross(rows):
+    """One sentence per key that backs an X.509 CA and an SSH CA at once."""
+    return [f"{_key_name(key_id, label)} backs the X.509 CA '{x509}' (#{x509_id}) and the SSH CA "
+            f"'{ssh}' (#{ssh_id})" for key_id, label, x509, x509_id, ssh, ssh_id in rows]
 
 
 def _refusal(named):
@@ -83,17 +102,21 @@ def _rows(conn, sql):
 def refusal(conn):
     """The message that stops the upgrade when one HSM key backs two CAs, else None. Reads only.
 
-    Both sides are checked: X.509 always, ssh_cas when its hsm_key_id column is already there
-    (2.254 builds that patched the columns in left it without the index, and creating the index
-    on such data would fail in the middle of the step)."""
+    Three shapes are checked: two X.509 CAs on one key; two SSH CAs on one key, which matters when
+    its hsm_key_id column is already there (2.254 builds that patched the columns in left it without
+    the index, and creating the index on such data would fail in the middle of the step); and one
+    X.509 CA and one SSH CA on the same key, which no unique index covers."""
     tables = _tables(conn)
     if 'hsm_keys' not in tables:
         return None
     named = []
+    ssh_bound = TABLE in tables and 'hsm_key_id' in _columns(conn, TABLE)
     if X509 in tables:
         named += _named(_rows(conn, _SHARED), 'X.509 CAs')
-    if TABLE in tables and 'hsm_key_id' in _columns(conn, TABLE):
+    if ssh_bound:
         named += _named(_rows(conn, _SSH_SHARED), 'SSH CAs')
+    if X509 in tables and ssh_bound:
+        named += _named_cross(_rows(conn, _CROSS))
     return _refusal('; '.join(named)) if named else None
 
 

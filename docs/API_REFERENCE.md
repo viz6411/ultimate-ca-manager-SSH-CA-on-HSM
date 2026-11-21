@@ -689,7 +689,10 @@ different one is `409` carrying that certificate's `subject`, `serial` and `not_
 `details.existing`, and retrying with `overwriteTokenCert: true` replaces it — the certificate that
 was in the slot is then named in the response as `replaced_from`, with the same three fields. A token
 that refuses answers `502`, an unreadable stored certificate `400`, a key row that is gone `404`. The
-CA and its certificate are untouched either way. The write itself is an audited action,
+CA and its certificate are untouched either way. When the write failed after the slot had been
+emptied, the outcome says whether the slot was refilled: `token_cert_upload.slot_restored` is `true`
+when the certificate that was there is back, `false` when it could not be put back and the slot may
+be empty; the same wording goes into the audit entry. The write itself is an audited action,
 `hsm_token_cert_uploaded`, with the CA name, the key id and what the slot held before.
 
 `POST /api/v2/cas` does the same at creation: `updateTokenCert` writes the certificate the server

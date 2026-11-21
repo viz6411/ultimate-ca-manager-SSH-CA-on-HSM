@@ -66,7 +66,12 @@ def _audit_token_cert_upload(ca, result: dict) -> dict:
                       if result.get('replaced_from') else ''}")
         details = f"Token slot of HSM key #{ca.hsm_key_id}: {what} for CA '{ca.descr or ''}'"
     else:
-        details = f"Token slot of HSM key #{ca.hsm_key_id}: write refused for CA '{ca.descr or ''}': {result.get('error')}"
+        # 'slot_restored' comes from store_token_certificate: whether the certificate that was in
+        # the slot before this attempt is back there, or the slot is now empty.
+        after = {True: ' The slot holds its previous certificate again.',
+                 False: ' The slot may now be empty: the previous certificate could not be put back.'}
+        details = (f"Token slot of HSM key #{ca.hsm_key_id}: write refused for CA '{ca.descr or ''}': "
+                   f"{result.get('error')}{after.get(result.get('slot_restored'), '')}")
     AuditService.log_action(
         action='hsm_token_cert_uploaded',
         resource_type='hsm_key',
@@ -98,7 +103,10 @@ def _upload_ca_cert_to_token(ca, overwrite: bool) -> dict:
         return _audit_token_cert_upload(ca, {'ok': False, 'error': 'token_cert_exists', 'existing': exc.existing})
     except (HsmConnectionError, HsmOperationError, HsmSecretUnreadable) as exc:
         logger.warning(f"CA {ca.id}: the token refused the certificate write: {exc}")
-        return _audit_token_cert_upload(ca, {'ok': False, 'error': str(exc) or exc.__class__.__name__})
+        outcome = {'ok': False, 'error': str(exc) or exc.__class__.__name__}
+        if getattr(exc, 'slot_restored', None) is not None:
+            outcome['slot_restored'] = exc.slot_restored
+        return _audit_token_cert_upload(ca, outcome)
     except (HsmConfigError, HsmKeyNotFoundError) as exc:
         return _audit_token_cert_upload(
             ca, {'ok': False, 'status': 404 if isinstance(exc, HsmKeyNotFoundError) else 400,
