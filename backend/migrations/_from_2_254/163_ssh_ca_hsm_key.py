@@ -59,12 +59,6 @@ def _refusal(named):
             f"this database.")
 
 
-def _refusal_text(rows, kind='X.509 CAs'):
-    named = _named(rows, kind)
-    return _refusal('; '.join(named)) if named else None
-
-
-
 def _tables(conn):
     if isinstance(conn, sqlite3.Connection):
         return {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}

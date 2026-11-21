@@ -243,11 +243,15 @@ class Pkcs11Provider(BaseHsmProvider):
             return True
             
         except pkcs11.PKCS11Error as e:
+            # The library's text carries the module path and vendor detail: it belongs in the log,
+            # not in a response body
             self._connected = False
-            raise HsmConnectionError(f"PKCS#11 connection failed: {str(e)}")
-        except Exception as e:
+            logger.warning("PKCS#11 connection to %s failed: %s", self.module_path, e)
+            raise HsmConnectionError("PKCS#11 connection failed")
+        except Exception as e:  # noqa: BLE001 - same rule for anything the module raises
             self._connected = False
-            raise HsmConnectionError(f"Connection failed: {str(e)}")
+            logger.warning("PKCS#11 connection to %s failed: %s", self.module_path, e)
+            raise HsmConnectionError("PKCS#11 connection failed")
     
     def disconnect(self) -> None:
         """Close session"""
