@@ -291,6 +291,7 @@ Starting with v2.48, UCM uses Major.Build versioning (e.g., 2.48, 2.49). Earlier
 - Dashboard: an API key without `read:settings` no longer receives `smtp`, `webhooks` and `auto_renewal` from `GET /api/v2/dashboard/system-status`; add the scope to keys that read them (see UPGRADE.md).
 - Certificates: `serial_number` of certificates issued from the form, renewed in place, issued on policy approval, issued by a Microsoft CA or used as TSA signer is now returned in decimal like the others; the UI still shows colon hex.
 - SSO: a sign-in whose email belongs to an account of another provider is refused instead of receiving a second account; if it is the same person, attach this provider to the existing account, otherwise create an account under the name the provider sends and attach the provider to it, removing its local password.
+
 ## [2.254.1] - 2026-11-14
 
 ### Security

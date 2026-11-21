@@ -32,17 +32,37 @@ _SHARED = (f"SELECT c.hsm_key_id, k.label, c.id, c.descr FROM {X509} c "
            f"GROUP BY hsm_key_id HAVING COUNT(*) > 1) ORDER BY c.hsm_key_id, c.id")
 
 
-def _refusal_text(rows):
-    if not rows:
-        return None
+# The same for ssh_cas, which 2.254 already has when a 2.254 build patched the columns in
+# (an older UCM added them without the index): creating the index on such data would fail in the
+# middle of the step. No join here: the CA names identify the pair, and ssh_cas is checked on
+# databases whose hsm_keys shape is not known yet.
+_SSH_SHARED = (f"SELECT c.hsm_key_id, NULL, c.id, c.descr FROM {TABLE} c "
+               f"WHERE c.hsm_key_id IN (SELECT hsm_key_id FROM {TABLE} WHERE hsm_key_id IS NOT NULL "
+               f"GROUP BY hsm_key_id HAVING COUNT(*) > 1) ORDER BY c.hsm_key_id, c.id")
+
+
+def _named(rows, kind):
+    """One sentence per key: which CAs share it. 'SSH CAs' / 'X.509 CAs' is the kind being named."""
     keys = {}
     for key_id, label, ca_id, descr in rows:
         keys.setdefault((key_id, label), []).append(f"'{descr}' (#{ca_id})")
-    named = '; '.join(f"HSM key '{label or ''}' (#{key_id}) backs {len(cas)} X.509 CAs: {', '.join(cas)}"
-                      for (key_id, label), cas in keys.items())
+    fragments = []
+    for (key_id, label), cas in keys.items():
+        named = f"HSM key '{label}' (#{key_id})" if label else f"HSM key #{key_id}"
+        fragments.append(f"{named} backs {len(cas)} {kind}: {', '.join(cas)}")
+    return fragments
+
+
+def _refusal(named):
     return (f"Upgrade refused: {named}. An HSM key backs one CA only: start 2.254 again, keep one CA on "
             f"each key and delete the others, then upgrade. Nothing was changed: 2.254 still starts on "
             f"this database.")
+
+
+def _refusal_text(rows, kind='X.509 CAs'):
+    named = _named(rows, kind)
+    return _refusal('; '.join(named)) if named else None
+
 
 
 def _tables(conn):
@@ -52,14 +72,35 @@ def _tables(conn):
     return set(inspect(conn).get_table_names())
 
 
-def refusal(conn):
-    """The message that stops the upgrade when two X.509 CAs share an HSM key, else None. Reads only."""
-    if not {X509, 'hsm_keys'} <= _tables(conn):
-        return None
+def _columns(conn, table):
     if isinstance(conn, sqlite3.Connection):
-        return _refusal_text(conn.execute(_SHARED).fetchall())
+        return {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+    from sqlalchemy import inspect
+    return {c['name'] for c in inspect(conn).get_columns(table)}
+
+
+def _rows(conn, sql):
+    if isinstance(conn, sqlite3.Connection):
+        return conn.execute(sql).fetchall()
     from sqlalchemy import text
-    return _refusal_text([tuple(r) for r in conn.execute(text(_SHARED))])
+    return [tuple(r) for r in conn.execute(text(sql))]
+
+
+def refusal(conn):
+    """The message that stops the upgrade when one HSM key backs two CAs, else None. Reads only.
+
+    Both sides are checked: X.509 always, ssh_cas when its hsm_key_id column is already there
+    (2.254 builds that patched the columns in left it without the index, and creating the index
+    on such data would fail in the middle of the step)."""
+    tables = _tables(conn)
+    if 'hsm_keys' not in tables:
+        return None
+    named = []
+    if X509 in tables:
+        named += _named(_rows(conn, _SHARED), 'X.509 CAs')
+    if TABLE in tables and 'hsm_key_id' in _columns(conn, TABLE):
+        named += _named(_rows(conn, _SSH_SHARED), 'SSH CAs')
+    return _refusal('; '.join(named)) if named else None
 
 
 def _upgrade_sqlite(conn):

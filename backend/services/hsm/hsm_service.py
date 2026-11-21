@@ -962,10 +962,15 @@ class HsmService:
                 return {'ok': True, 'uploaded': False, 'already': True}
             if existing and not overwrite:
                 raise TokenCertExistsError(cls._certificate_summary(existing))
+            replaced_from = cls._certificate_summary(existing) if existing else None
             if existing:
                 hsm.delete_certificate(key.key_identifier)
             hsm.store_certificate(key.key_identifier, cert_der, label=key.label)
-        return {'ok': True, 'uploaded': True, 'replaced': bool(existing)}
+        result = {'ok': True, 'uploaded': True, 'replaced': bool(existing)}
+        if replaced_from:
+            # What was in the slot before it was overwritten — the audit names it
+            result['replaced_from'] = replaced_from
+        return result
 
     @staticmethod
     def _referenced_hsm_key_ids() -> set:

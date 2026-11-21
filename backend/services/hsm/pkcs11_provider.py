@@ -133,11 +133,14 @@ def cryptoki_library(module_path: str, refresh: bool = False):
     """
     pid = os.getpid()
     owner = _initialized_by.get(module_path)
-    if refresh and owner == pid and _open_sessions == 0:
+    if refresh and owner == pid:
         with _lib_lock:
-            pkcs11.unload(module_path)
-            _initialized_by.pop(module_path, None)
-            owner = None
+            # Re-checked under the lock: a session another thread opened in between must not be
+            # invalidated by an unload, so the stale view stays for that call.
+            if _open_sessions == 0:
+                pkcs11.unload(module_path)
+                _initialized_by.pop(module_path, None)
+                owner = None
     if owner is None or owner == pid:
         lib = pkcs11.lib(module_path)
     else:
@@ -205,7 +208,9 @@ class Pkcs11Provider(BaseHsmProvider):
         
         # Check module exists
         if not Path(self.module_path).exists():
-            raise HsmConfigError(f"PKCS#11 module not found: {self.module_path}")
+            # The path is the operator's own configuration: it goes to the log, not into a response
+            logger.warning("PKCS#11 module not found: %s", self.module_path)
+            raise HsmConfigError("PKCS#11 module not found")
         
         self._lib = None
         self._token = None

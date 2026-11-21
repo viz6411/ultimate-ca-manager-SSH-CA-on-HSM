@@ -686,8 +686,11 @@ key row that is gone.
 
 The slot is read first: the CA's own certificate already there answers ok with `already`, a
 different one is `409` carrying that certificate's `subject`, `serial` and `not_after` in
-`details.existing`, and retrying with `overwriteTokenCert: true` replaces it; a token that refuses
-answers `502`. The CA and its certificate are untouched either way.
+`details.existing`, and retrying with `overwriteTokenCert: true` replaces it — the certificate that
+was in the slot is then named in the response as `replaced_from`, with the same three fields. A token
+that refuses answers `502`, an unreadable stored certificate `400`, a key row that is gone `404`. The
+CA and its certificate are untouched either way. The write itself is an audited action,
+`hsm_token_cert_uploaded`, with the CA name, the key id and what the slot held before.
 
 `POST /api/v2/cas` does the same at creation: `updateTokenCert` writes the certificate the server
 has just signed into the key's slot, `overwriteTokenCert` accepts replacing what is already there,
