@@ -57,6 +57,9 @@ class SSHCertificateAuthority(db.Model if db else object):
     # Max allowed validity (seconds) — 0 means unlimited
     max_ttl = db.Column(db.Integer, default=0)
 
+    # Bumped on every revoked certificate of this CA; ETag source for /ssh/krl/<refid>
+    krl_version = db.Column(db.Integer, default=0, nullable=False)
+
     # Default extensions for user certs (JSON list of extension names)
     default_extensions = db.Column(db.Text)
 
@@ -160,6 +163,7 @@ class SSHCertificateAuthority(db.Model if db else object):
             'serial_counter': self.serial_counter,
             'default_ttl': self.default_ttl,
             'max_ttl': self.max_ttl,
+            'krl_version': self.krl_version or 0,
             'default_extensions': self.get_default_extensions(),
             'allowed_principals': self.get_allowed_principals(),
             'allow_any_principal': bool(self.allow_any_principal),

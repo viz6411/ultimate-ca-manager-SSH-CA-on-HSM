@@ -7758,7 +7758,9 @@
     "range": "{{shown}} из {{count}} ЦС SSH",
     "pageRange": "{{start}}–{{end}} из {{count}} ЦС SSH",
     "moreActions": "Другие действия для {{name}}",
-    "actionsTitle": "Действия с УЦ SSH"
+    "actionsTitle": "Действия с УЦ SSH",
+    "copyKrlSyncCommand": "Авто-синхронизация KRL (15 мин)",
+    "krlSyncCopied": "Команда синхронизации KRL скопирована"
   },
   "sshCertificates": {
     "title": "Сертификаты SSH",

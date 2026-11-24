@@ -106,3 +106,19 @@ class SSHKRLService:
                 os.rmdir(tmpdir)
             except OSError:
                 pass
+
+
+# Per-process cache: ssh-keygen runs only when the CA's krl_version moves, not
+# on every public download (DoS guard for the unauthenticated /ssh/krl endpoint).
+_krl_cache = {}
+
+
+def get_cached_krl(ca):
+    """Return (krl_version, krl_bytes) for a CA, regenerating only on change."""
+    version = ca.krl_version or 0
+    cached = _krl_cache.get(ca.id)
+    if cached and cached[0] == version:
+        return version, cached[1]
+    data = SSHKRLService.generate_krl(ca.id)
+    _krl_cache[ca.id] = (version, data)
+    return version, data

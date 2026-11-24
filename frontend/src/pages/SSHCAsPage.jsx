@@ -256,6 +256,11 @@ export default function SSHCAsPage() {
           <Btn icon={isCopied('publicKey') ? 'check' : 'copy'} id="ssh-ca-copy" onClick={() => handleCopyPublicKey(open)}>
             {isCopied('publicKey') ? t('sshCas.publicKeyCopied') : t('sshCas.copyPublicKey')}
           </Btn>
+          {open.ca_type === 'user' && (
+            <Btn icon={isCopied('krlSync') ? 'check' : 'refresh'} id="ssh-ca-krl-sync" onClick={() => copyCommand(`curl -sSL "${window.location.origin}/ssh/krl/${open.refid}/setup" | sudo bash`, 'krlSync', 'sshCas.krlSyncCopied')}>
+              {isCopied('krlSync') ? t('sshCas.krlSyncCopied') : t('sshCas.copyKrlSyncCommand')}
+            </Btn>
+          )}
           <IconBtn quiet icon="more" title={false} label={t('sshCas.moreActions', { name: open.descr || '' })} data-ssh-ca-menu={open.id} onClick={() => setMenuOpen(true)} />
         </>}>
         {section === 'overview' && (

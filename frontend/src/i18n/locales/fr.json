@@ -7430,7 +7430,9 @@
     "range": "{{shown}} sur {{count}} AC SSH",
     "pageRange": "{{start}}–{{end}} sur {{count}} AC SSH",
     "moreActions": "Autres actions de {{name}}",
-    "actionsTitle": "Actions de l’AC SSH"
+    "actionsTitle": "Actions de l’AC SSH",
+    "copyKrlSyncCommand": "KRL Auto-Sync (15m)",
+    "krlSyncCopied": "KRL sync command copied"
   },
   "sshCertificates": {
     "title": "Certificats SSH",

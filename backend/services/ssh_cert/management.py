@@ -64,6 +64,10 @@ class SSHCertificateManagementMixin:
         cert.revoked_with = siblings
         cert.revoked_through = through
 
+        # The public KRL ETag (pull-only, clients poll) keys off this counter
+        if cert.ca:
+            cert.ca.krl_version = (cert.ca.krl_version or 0) + 1
+
         try:
             db.session.commit()
         except Exception as e:

@@ -7430,7 +7430,9 @@
     "range": "{{count}} 件中 {{shown}} 件のSSH CA",
     "pageRange": "{{count}} 件中 {{start}}〜{{end}} 件目のSSH CA",
     "moreActions": "{{name}} のその他の操作",
-    "actionsTitle": "SSH CA の操作"
+    "actionsTitle": "SSH CA の操作",
+    "copyKrlSyncCommand": "KRL Auto-Sync (15m)",
+    "krlSyncCopied": "KRL sync command copied"
   },
   "sshCertificates": {
     "title": "SSH証明書",

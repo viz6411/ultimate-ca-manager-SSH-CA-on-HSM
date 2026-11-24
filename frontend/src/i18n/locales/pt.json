@@ -7430,7 +7430,9 @@
     "range": "{{shown}} de {{count}} CA SSH",
     "pageRange": "{{start}}–{{end}} de {{count}} CA SSH",
     "moreActions": "Outras ações para {{name}}",
-    "actionsTitle": "Ações da CA SSH"
+    "actionsTitle": "Ações da CA SSH",
+    "copyKrlSyncCommand": "KRL Auto-Sync (15m)",
+    "krlSyncCopied": "KRL sync command copied"
   },
   "sshCertificates": {
     "title": "Certificados SSH",

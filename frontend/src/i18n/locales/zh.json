@@ -7430,7 +7430,9 @@
     "range": "{{shown}} / {{count}} 个 SSH CA",
     "pageRange": "第 {{start}}–{{end}} 个，共 {{count}} 个 SSH CA",
     "moreActions": "{{name}} 的其他操作",
-    "actionsTitle": "SSH CA 操作"
+    "actionsTitle": "SSH CA 操作",
+    "copyKrlSyncCommand": "KRL Auto-Sync (15m)",
+    "krlSyncCopied": "KRL sync command copied"
   },
   "sshCertificates": {
     "title": "SSH 证书",
