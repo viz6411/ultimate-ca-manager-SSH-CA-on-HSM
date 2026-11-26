@@ -28,6 +28,37 @@ logger = logging.getLogger(__name__)
 
 bp = Blueprint('ssh_certificates_v2', __name__)
 
+def _emit_ssh_cert_event(event, cert):
+    """Webhook event for an SSH certificate lifecycle change (never raises)."""
+    try:
+        from services.webhook_service import WebhookService
+        WebhookService.send_event(event, {
+            'cert_id': cert.id,
+            'serial': cert.serial,
+            'key_id': cert.key_id,
+            'cert_type': cert.cert_type,
+            'ca_id': cert.ssh_ca_id,
+        }, ca_refid=cert.ca.refid if cert.ca else None)
+    except Exception:
+        logger.error(f"Failed to queue webhook event '{event}' for SSH cert {cert.id}")
+
+
+def _emit_krl_updated(cert):
+    try:
+        from services.webhook_service import WebhookService
+        ca = cert.ca
+        WebhookService.send_event('ssh_ca.krl_updated', {
+            'ca_id': cert.ssh_ca_id,
+            'ca_name': ca.descr if ca else None,
+            'krl_version': ca.krl_version if ca else None,
+            'krl_path': f'/ssh/krl/{ca.refid}' if ca else None,
+            'serial': cert.serial,
+        }, ca_refid=ca.refid if ca else None)
+    except Exception:
+        logger.error(f"Failed to queue webhook event 'ssh_ca.krl_updated' for CA {cert.ssh_ca_id}")
+
+
+
 # Caps (defense in depth — services may also enforce)
 _MAX_PUBKEY_LEN = 16 * 1024            # OpenSSH pubkeys are < 4KB
 _MAX_PRINCIPALS = 64
@@ -390,6 +421,8 @@ def sign_ssh_certificate():
         except Exception:
             pass
 
+        _emit_ssh_cert_event('ssh_certificate.issued', cert)
+
         return created_response(
             data=cert.to_dict(),
             message='SSH certificate issued successfully'
@@ -524,6 +557,9 @@ def revoke_ssh_certificate(cert_id):
                 on_ssh_certificate_revoked(revoked.id, revoked.key_id, reason, username)
         except Exception:
             pass
+
+        _emit_ssh_cert_event('ssh_certificate.revoked', cert)
+        _emit_krl_updated(cert)
 
         return success_response(
             data={**cert.to_dict(), 'revoked_with': [o.id for o in others], 'revoked_by': entries},

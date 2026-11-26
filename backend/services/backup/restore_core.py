@@ -145,6 +145,9 @@ GENERIC_SECTIONS = (
     # After its proxy account, EAB credential and creator (users and
     # acme_eab_credentials have their own restorers, run before these).
     'acme_dns_update_keys',
+    # After ssh_cas and ssh_certificates, whose ids it points at (their
+    # hand-written restorers run before every generic section).
+    'ssh_managed_hosts',
     # The history an archive carries only when it is asked for. They were
     # listed as restored and no code path ever wrote them: the export
     # collected them, the restore counted them as applied, and they went
@@ -176,7 +179,7 @@ RESTORED_SECTIONS = set(GENERIC_SECTIONS) | {
     'sso_providers', 'hsm_providers', 'hsm_keys', 'api_keys', 'smtp_config',
     'notification_config', 'certificate_policies', 'auth_certificates',
     'dns_providers', 'acme_domains', 'acme_local_domains', 'ssh_cas',
-    'ssh_certificates', 'microsoft_cas', 'msca_requests', 'scan_profiles',
+    'ssh_certificates', 'ssh_managed_hosts', 'microsoft_cas', 'msca_requests', 'scan_profiles',
     'scan_runs', 'discovered_certificates', 'approval_requests',
     'scep_requests', 'acme_client_orders', 'key_recovery_requests', 'audit_logs',
     'https_server',

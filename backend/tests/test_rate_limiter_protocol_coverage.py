@@ -22,6 +22,7 @@ SAMPLE_PATH = {
     '/.well-known/': '/.well-known/est/simpleenroll',
     '/tsa/': '/tsa/reply',
     '/ssh/setup/': '/ssh/setup/host',
+    '/ssh/krl/': '/ssh/krl/host-ca-refid',
     '/ADPolicyProvider_CEP_': '/ADPolicyProvider_CEP_UsernamePassword/service.svc',
     '/ADCertificateService_CES_': '/ADCertificateService_CES_UsernamePassword/service.svc',
 }

@@ -563,5 +563,11 @@ def list_events():
             'acme.preflight': 'When an ACME preflight dry-run completes',
             'acme_order.renewal_failed': 'When an ACME client renewal fails, scheduled or manual',
             'acme_order.revocation_failed': 'When the CA refuses or misses the revocation of a renewed certificate',
+            'ssh_certificate.issued': 'When an SSH certificate (user or host) is issued',
+            'ssh_certificate.revoked': 'When an SSH certificate is revoked',
+            'ssh_ca.krl_updated': "When an SSH CA's KRL gains a revocation — the version agents download moves",
+            'ssh_host.enrolled': 'When a managed SSH host enrolls and gets its first host certificate',
+            'ssh_host.renewed': 'When a managed SSH host certificate is renewed',
+            'ssh_host.revoked': 'When a managed SSH host is revoked and blocked from renewing',
         }
     })

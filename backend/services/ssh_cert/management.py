@@ -4,7 +4,7 @@ from sqlalchemy import or_, update
 from sqlalchemy.orm.attributes import set_committed_value
 
 from models import db
-from models.ssh import SSHCertificateAuthority, SSHCertificate
+from models.ssh import SSHCertificateAuthority, SSHCertificate, SSHManagedHost
 from services.ssh_ca_service import SSHCAService
 from utils.datetime_utils import utc_now
 
@@ -64,7 +64,7 @@ class SSHCertificateManagementMixin:
         cert.revoked_with = siblings
         cert.revoked_through = through
 
-        # The public KRL ETag (pull-only, clients poll) keys off this counter
+        # The public KRL ETag (pull-only, agents poll) keys off this counter
         if cert.ca:
             cert.ca.krl_version = (cert.ca.krl_version or 0) + 1
 
@@ -95,6 +95,10 @@ class SSHCertificateManagementMixin:
                 f"it can be deleted after {cert.valid_to:%Y-%m-%d %H:%M} UTC.")
 
         cert_name = cert.key_id
+        # Hosts may point here as their current certificate: detach them
+        # before the row goes away (FK), they re-sign on the next check-in.
+        SSHManagedHost.query.filter_by(current_cert_id=cert_id).update(
+            {'current_cert_id': None})
         try:
             db.session.delete(cert)
             db.session.commit()

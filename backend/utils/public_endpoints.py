@@ -53,6 +53,9 @@ _HEALTH_PATHS = frozenset({
 # used to carry its own copy, and they drifted.
 PROTOCOL_PREFIXES = (
     '/cdp/', '/ca/', '/ocsp/', '/scep/', '/.well-known/', '/tsa/', '/ssh/setup/',
+    # Managed-host agent KRL pull (api/ssh_setup.py): agents are machine
+    # clients like CRL/OCSP fetchers — never filtered by the admin allowlist
+    # (issue #451: the pull-only model depends on them staying reachable).
     '/ssh/krl/',
     # XCEP/WSTEP (services/wstep/__init__.py, api/xcep_protocol.py): real
     # Windows SOAP clients don't follow POST redirects, so these must never
@@ -65,7 +68,18 @@ PROTOCOL_PREFIXES = (
 # A protocol path skips the canonical-admin redirect, the admin-vs-ACME
 # host-role check and the http→https upgrade, so that one missing slash
 # published an admin page on the ACME vhost and over cleartext HTTP.
-PROTOCOL_EXACT_PATHS = frozenset({'/ocsp', '/tsa'})
+# '/ssh/agent-setup' and '/ssh/agent-runner' are single routes with nothing
+# after them: as bare prefixes they would also match hypothetical siblings,
+# so they belong here, exactly like '/tsa'.
+# The three agent API routes are here too: an agent is a machine client with
+# its own token, and under `admin_allowed_networks` (#402) a host outside the
+# admin subnets would otherwise get 403 forever — the KRL would arrive while
+# host certificates quietly expired at `host_cert_ttl`. They authenticate with
+# X-Host-Token, so reaching them from anywhere buys an attacker nothing.
+PROTOCOL_EXACT_PATHS = frozenset({
+    '/ocsp', '/tsa', '/ssh/agent-setup', '/ssh/agent-runner',
+    '/api/v2/ssh/hosts/enroll', '/api/v2/ssh/hosts/check-in', '/api/v2/ssh/hosts/renew',
+})
 ACME_PREFIXES = ('/acme/',)
 _STATIC_PREFIXES = ('/static/', '/assets/')
 

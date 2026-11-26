@@ -610,12 +610,22 @@ def _seed_source():
     ssh_authorities[0].hsm_key_id = hsm_keys[0].id
     db.session.flush()
 
-    add('ssh_certificates', refid='xinst-sshcert', ssh_ca_id=ssh_authorities[1].id,
+    ssh_cert = add('ssh_certificates', refid='xinst-sshcert', ssh_ca_id=ssh_authorities[1].id,
         cert_type='user', key_id='xinst-key-id', public_key='ssh-ed25519 AAAA xinst',
         certificate='ssh-ed25519-cert-v01@openssh.com AAAA', principals='["xinst"]',
         serial=17, valid_from=now, valid_to=now + timedelta(days=30),
         key_type='ed25519', fingerprint='SHA256:xinstcert',
         owner_group_id=groups[1].id)
+
+    # A managed host: it points at both SSH authorities and at the certificate
+    # above — exactly the links a restore onto another installation must remap.
+    add('ssh_managed_hosts', hostname='xinst-host.example.test',
+        host_ca_id=ssh_authorities[0].id, user_ca_id=ssh_authorities[1].id,
+        current_cert_id=ssh_cert.id,
+        token_hash='x' * 64, token_prefix='ucm_sh_xinst',
+        public_key='ssh-ed25519 AAAA xinst', principals='["xinst-host.example.test"]',
+        status='active', auto_renew=True)
+    db.session.flush()
 
     microsoft = [add('microsoft_cas', name=f'xinst-msca-{suffix}',
                      server=f'ca-{suffix}.example.test') for suffix in 'ab']
@@ -766,7 +776,7 @@ RESTORABLE_SECTIONS = tuple(
         'dns_providers', 'acme_accounts', 'acme_eab_credentials',
         'acme_domains', 'acme_local_domains', 'acme_client_accounts',
         'acme_client_orders', 'acme_dns_update_keys',
-        'ssh_cas', 'ssh_certificates', 'microsoft_cas', 'msca_requests',
+        'ssh_cas', 'ssh_certificates', 'ssh_managed_hosts', 'microsoft_cas', 'msca_requests',
         'scep_profiles', 'scep_requests', 'deploy_targets', 'scan_profiles', 'scan_runs',
         'intune_apps',
         'discovered_certificates', 'smtp_config', 'ad_connector',

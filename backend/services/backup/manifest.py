@@ -344,6 +344,24 @@ SECTIONS: Dict[str, Section] = {
         references={'ssh_ca_id': 'ssh_cas',
                     'owner_group_id': 'groups'},
     ),
+    'ssh_managed_hosts': Section(
+        model='models.ssh:SSHManagedHost',
+        identity=('hostname',),
+        exclude={
+            **_SURROGATE,
+            **{'last_seen_at': 'live agent contact state',
+               'last_ip': 'live agent contact state',
+               'last_krl_sync_at': 'live sync state',
+               'last_renew_at': 'live sync state',
+               'bootstrap_hash': 'single-use install token, dead once spent',
+               'bootstrap_expires': 'expiry of a single-use install token'},
+        },
+        # token_hash/token_prefix travel: the agent holds the plaintext token
+        # across the restore, so the target must keep matching it.
+        references={'host_ca_id': 'ssh_cas',
+                    'user_ca_id': 'ssh_cas',
+                    'current_cert_id': 'ssh_certificates'},
+    ),
     'microsoft_cas': Section(
         model='models.msca:MicrosoftCA',
         identity=('name',),

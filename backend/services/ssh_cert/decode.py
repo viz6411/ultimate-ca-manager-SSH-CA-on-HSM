@@ -115,8 +115,9 @@ class SSHCertificateDecodeMixin:
         if not descr:
             descr = f"Imported {cert_type} cert for {decoded['key_id']}"
 
-        valid_from_dt = datetime.fromtimestamp(decoded['valid_after'], tz=timezone.utc)
-        valid_to_dt = datetime.fromtimestamp(decoded['valid_before'], tz=timezone.utc)
+        # Naive UTC, as stored by signing.py and every other DateTime column.
+        valid_from_dt = datetime.fromtimestamp(decoded['valid_after'], tz=timezone.utc).replace(tzinfo=None)
+        valid_to_dt = datetime.fromtimestamp(decoded['valid_before'], tz=timezone.utc).replace(tzinfo=None)
 
         ssh_cert = SSHCertificate(
             refid=str(uuid.uuid4()),

@@ -127,6 +127,14 @@ def get_public_krl(refid):
     )
 
 
+def _resolved_base_url():
+    admin_base = get_admin_base_url()
+    if admin_base:
+        return admin_base.rstrip('/')
+    parsed = parse_public_url(request.url_root)
+    return (parsed.normalized if parsed and parsed.normalized else request.url_root).rstrip('/')
+
+
 @bp.route('/ssh/krl/<refid>/setup', methods=['GET'])
 def get_public_krl_sync_setup(refid):
     """Serve a tokenless 15-minute KRL auto-sync setup script for a User CA."""
@@ -143,13 +151,7 @@ def get_public_krl_sync_setup(refid):
         return Response('#!/bin/sh\necho "Error: Invalid platform"\nexit 1\n',
                         status=400, mimetype='text/x-shellscript')
 
-    admin_base = get_admin_base_url()
-    if admin_base:
-        base_url = admin_base.rstrip('/')
-    else:
-        parsed = parse_public_url(request.url_root)
-        base_url = (parsed.normalized if parsed and parsed.normalized else request.url_root).rstrip('/')
-
+    base_url = _resolved_base_url()
     pub_key = SSHCAService.get_public_key(ca.id)
     from services.ucm_krl_sync_scripts import build_krl_sync_setup_script
     script = build_krl_sync_setup_script(base_url, ca.refid, pub_key, platform)
@@ -162,6 +164,48 @@ def get_public_krl_sync_setup(refid):
         mimetype = 'text/x-shellscript'
         filename = f'ucm_krl_sync_{safe_name}.sh'
 
+    return Response(
+        script,
+        mimetype=mimetype,
+        headers={
+            'Content-Disposition': f'attachment; filename="{filename}"',
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+        },
+    )
+
+
+@bp.route('/ssh/agent-runner', methods=['GET'])
+def get_agent_runner():
+    """The public ucm-ssh-agent runner script (no secrets baked in)."""
+    from services.ucm_agent_scripts import build_agent_runner
+    platform = request.args.get('platform', 'unix').strip().lower()
+    if platform == 'windows':
+        return Response(build_agent_runner('windows'), mimetype='text/plain')
+    return Response(build_agent_runner('unix'), mimetype='text/x-shellscript')
+
+
+@bp.route('/ssh/agent-setup', methods=['GET'])
+def get_agent_setup():
+    """Installer for one managed host: validates the one-time bootstrap token
+    and serves the install command payload (`curl ... | sudo bash`)."""
+    from services.ssh_managed_host_service import SSHManagedHostService
+    from services.ucm_agent_scripts import build_agent_setup_script
+
+    token = request.args.get('token', '')
+    host = SSHManagedHostService.resolve_bootstrap(token)
+    if not host:
+        return Response('#!/bin/sh\necho "Error: install token invalid or expired"\nexit 1\n',
+                        status=404, mimetype='text/x-shellscript')
+
+    platform = request.args.get('platform', 'unix').strip().lower()
+    if platform not in ('unix', 'linux', 'windows'):
+        return Response('#!/bin/sh\necho "Error: Invalid platform"\nexit 1\n',
+                        status=400, mimetype='text/x-shellscript')
+
+    base_url = _resolved_base_url()
+    script = build_agent_setup_script(base_url, token, platform)
+    mimetype = 'text/x-powershell' if platform == 'windows' else 'text/x-shellscript'
+    filename = 'ucm-ssh-agent-setup.ps1' if platform == 'windows' else 'ucm-ssh-agent-setup.sh'
     return Response(
         script,
         mimetype=mimetype,

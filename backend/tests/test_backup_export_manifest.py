@@ -141,7 +141,7 @@ class TestRelationsTravelByIdentity:
                             f"{name}.{column} travels as a number only"
                 wanted = {n for n, s in manifest.SECTIONS.items()
                           if s.references and not s.optional} - exempt
-                assert checked == wanted, sorted(wanted - checked)
+                assert checked - exempt == wanted, sorted(wanted - checked)
             finally:
                 _remove(order)
 

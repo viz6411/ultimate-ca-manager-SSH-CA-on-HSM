@@ -144,6 +144,11 @@ class RateLimitConfig:
             '/tsa': {'rpm': standard_rpm, 'burst': standard_burst},
             '/ssh/setup/': {'rpm': standard_rpm, 'burst': standard_burst},
             '/ssh/krl/': {'rpm': standard_rpm, 'burst': standard_burst},
+            '/ssh/agent-setup': {'rpm': standard_rpm, 'burst': standard_burst},
+            '/ssh/agent-runner': {'rpm': standard_rpm, 'burst': standard_burst},
+            '/api/v2/ssh/hosts/enroll': {'rpm': standard_rpm, 'burst': standard_burst},
+            '/api/v2/ssh/hosts/check-in': {'rpm': standard_rpm, 'burst': standard_burst},
+            '/api/v2/ssh/hosts/renew': {'rpm': standard_rpm, 'burst': standard_burst},
             '/.well-known/acme-challenge/': {'rpm': standard_rpm, 'burst': standard_burst},
             # Windows enrolment: a GPO refresh fans a fleet out at once, and
             # these had `_default` before. Separate bucket, same rate.

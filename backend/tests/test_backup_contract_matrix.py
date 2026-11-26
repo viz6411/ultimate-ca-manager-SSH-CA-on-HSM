@@ -168,6 +168,17 @@ def _seed_all():
                  if not section.custom}
     index = 0
 
+    # `ssh_managed_hosts` hangs off an SSH authority, and no generic value is
+    # a usable CA key pair — ask the SSH service for a real one. The child
+    # then seeds like anything else, and the authority itself travels through
+    # the export/restore round trips below instead of being waved through.
+    if not _any_existing('ssh_cas'):
+        from services.ssh_ca_service import SSHCAService
+        parent = SSHCAService.create_ca(descr='zzcontract ssh authority',
+                                        ca_type='host', key_type='ed25519')
+        rows['ssh_cas'] = parent
+        order.append(('ssh_cas', {'id': parent.id}))
+
     for _pass in range(_SEEDING_PASSES):
         # A parent this file created itself is used in preference to one the
         # rest of the suite left behind: reusing an existing pair is how a

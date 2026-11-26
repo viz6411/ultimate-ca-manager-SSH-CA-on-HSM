@@ -3863,6 +3863,26 @@ The KRL names a certificate by its serial number, which UCM gives out once per C
 | Host verification failed | Add the Host CA to known_hosts with @cert-authority |
 `
   },
+
+  // ===================================================================
+  sshHosts: {
+    title: 'SSH Managed Hosts',
+    content: `
+## SSH Managed Hosts
+
+Connect Linux, BSD, macOS, and Windows servers to UCM using a strict pull-only agent (\`ucm-ssh-agent\`) that checks in every 15 minutes to synchronize User CA KRLs and automatically renew host certificates.
+
+## Connecting a Server
+
+1. Click **Connect Host** and select a **Host CA** and/or **User CA**.
+2. Run the generated one-line installer command on the server.
+3. The agent enrolls using a one-time bootstrap token, installs \`TrustedUserCAKeys\`, \`RevokedKeys\`, and \`HostCertificate\`, and schedules a 15-minute \`systemd.timer\` (or \`crontab\` / Windows Scheduled Task).
+
+## Live CA & Certificate Settings
+
+Click any host row to open its settings modal, switch the assigned **Host CA** or **User CA**, or override the host certificate TTL and renewal threshold. Changes are marked **Pending sync** until the agent picks them up on its next check-in tick.
+`
+  },
 }
 
 export default helpGuides

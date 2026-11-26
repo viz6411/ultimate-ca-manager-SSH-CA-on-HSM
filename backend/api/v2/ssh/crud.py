@@ -307,6 +307,10 @@ def update_ssh_ca(ca_id):
             kwargs['default_ttl'] = data['default_ttl']
         if 'max_ttl' in data:
             kwargs['max_ttl'] = data['max_ttl']
+        if 'host_cert_ttl' in data:
+            kwargs['host_cert_ttl'] = data['host_cert_ttl']
+        if 'renew_threshold_percent' in data:
+            kwargs['renew_threshold_percent'] = data['renew_threshold_percent']
         if 'comment' in data:
             kwargs['comment'] = data['comment']
         if 'default_extensions' in data:

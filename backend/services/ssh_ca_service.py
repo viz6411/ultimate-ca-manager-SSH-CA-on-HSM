@@ -482,13 +482,18 @@ class SSHCAService:
             raise ValueError(f"SSH CA not found: {ca_id}")
 
         allowed_fields = {'descr', 'default_ttl', 'max_ttl', 'comment',
-                          'allow_any_principal', 'allow_custom_key_id'}
+                          'allow_any_principal', 'allow_custom_key_id',
+                          'host_cert_ttl', 'renew_threshold_percent'}
         for field, value in kwargs.items():
             if field in allowed_fields:
                 # Normalize TTL fields (seconds or duration strings like
                 # "7d") to int seconds to prevent str/int comparison errors
-                if field in ('default_ttl', 'max_ttl') and value is not None:
+                if field in ('default_ttl', 'max_ttl', 'host_cert_ttl') and value is not None:
                     value = parse_duration_seconds(value, field=field)
+                if field == 'renew_threshold_percent' and value is not None:
+                    value = int(value)
+                    if not 1 <= value <= 90:
+                        raise ValueError('renew_threshold_percent must be between 1 and 90')
                 setattr(ca, field, value)
 
         if 'default_extensions' in kwargs:
@@ -520,6 +525,18 @@ class SSHCAService:
             raise ValueError(
                 f"Cannot delete SSH CA: {cert_count} certificate(s) were issued by it. "
                 f"Delete them first."
+            )
+
+        # Managed hosts hold FKs to this CA (host CA and/or user CA): deleting
+        # it would orphan them and their agent tokens.
+        from models.ssh import SSHManagedHost
+        host_count = SSHManagedHost.query.filter(
+            db.or_(SSHManagedHost.host_ca_id == ca_id,
+                   SSHManagedHost.user_ca_id == ca_id)).count()
+        if host_count:
+            raise ValueError(
+                f"Cannot delete SSH CA: {host_count} managed host(s) are registered "
+                f"against it. Delete the hosts first."
             )
 
         ca_name = ca.descr

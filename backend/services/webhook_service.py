@@ -269,9 +269,16 @@ class WebhookService:
     ACME_PREFLIGHT = 'acme.preflight'
     ACME_RENEWAL_FAILED = 'acme_order.renewal_failed'
     ACME_REVOCATION_FAILED = 'acme_order.revocation_failed'
+    # SSH lifecycle — managed hosts and KRL rollout (migration 138)
+    SSH_CERT_ISSUED = 'ssh_certificate.issued'
+    SSH_CERT_REVOKED = 'ssh_certificate.revoked'
+    SSH_KRL_UPDATED = 'ssh_ca.krl_updated'
+    SSH_HOST_ENROLLED = 'ssh_host.enrolled'
+    SSH_HOST_RENEWED = 'ssh_host.renewed'
+    SSH_HOST_REVOKED = 'ssh_host.revoked'
+
     # System updates (#301)
-    UPDATE_AVAILABLE = 'system.update_available'
-    # Trigger written, watcher will install on restart (#301 review R-01)
+    UPDATE_AVAILABLE = 'system.update_available'    # Trigger written, watcher will install on restart (#301 review R-01)
     UPDATE_INITIATED = 'system.update_initiated'
     # Emitted only after the watcher's durable result confirms the install
     UPDATE_INSTALLED = 'system.update_installed'
@@ -284,6 +291,8 @@ class WebhookService:
         CSR_SUBMITTED, CSR_APPROVED, CSR_REJECTED,
         TEMPLATE_CREATED, TEMPLATE_UPDATED,
         ACME_PREFLIGHT, ACME_RENEWAL_FAILED, ACME_REVOCATION_FAILED,
+        SSH_CERT_ISSUED, SSH_CERT_REVOKED, SSH_KRL_UPDATED,
+        SSH_HOST_ENROLLED, SSH_HOST_RENEWED, SSH_HOST_REVOKED,
         UPDATE_AVAILABLE, UPDATE_INITIATED, UPDATE_INSTALLED, UPDATE_FAILED,
     ]
 

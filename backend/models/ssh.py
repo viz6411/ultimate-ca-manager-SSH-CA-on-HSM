@@ -57,7 +57,14 @@ class SSHCertificateAuthority(db.Model if db else object):
     # Max allowed validity (seconds) — 0 means unlimited
     max_ttl = db.Column(db.Integer, default=0)
 
-    # Bumped on every revoked certificate of this CA; ETag source for /ssh/krl/<refid>
+    # Host-certificate lifecycle (host CAs only, migration 302): TTL of managed
+    # host certs, isolated from the day-short user default_ttl, and the percent
+    # of remaining validity at which renewal starts.
+    host_cert_ttl = db.Column(db.Integer, default=2592000, nullable=False)  # 30 days
+    renew_threshold_percent = db.Column(db.Integer, default=30, nullable=False)
+
+    # Bumped on every revoked certificate of this CA; the ETag source of the
+    # pull-only /ssh/krl/<refid> endpoint (agents poll, UCM never pushes).
     krl_version = db.Column(db.Integer, default=0, nullable=False)
 
     # Default extensions for user certs (JSON list of extension names)
@@ -163,6 +170,8 @@ class SSHCertificateAuthority(db.Model if db else object):
             'serial_counter': self.serial_counter,
             'default_ttl': self.default_ttl,
             'max_ttl': self.max_ttl,
+            'host_cert_ttl': self.host_cert_ttl,
+            'renew_threshold_percent': self.renew_threshold_percent,
             'krl_version': self.krl_version or 0,
             'default_extensions': self.get_default_extensions(),
             'allowed_principals': self.get_allowed_principals(),
@@ -353,3 +362,119 @@ class SSHCertificate(db.Model if db else object):
 
     def __repr__(self):
         return f'<SSHCertificate {self.key_id} ({self.cert_type})>'
+
+
+class SSHManagedHost(db.Model if db else object):
+    """A server enrolled in UCM's SSH pull-model (migration 138).
+
+    The host runs ucm-ssh-agent and contacts UCM itself: public KRL download
+    (no secret) for its user CA, host-certificate enrollment/renewal with its
+    scoped host token. UCM never connects to the server.
+    """
+
+    __tablename__ = 'ssh_managed_hosts'
+
+    STATUS_PENDING = 'pending'
+    STATUS_ACTIVE = 'active'
+    STATUS_REVOKED = 'revoked'
+    VALID_STATUSES = [STATUS_PENDING, STATUS_ACTIVE, STATUS_REVOKED]
+
+    id = db.Column(db.Integer, primary_key=True)
+    hostname = db.Column(db.String(255), unique=True, nullable=False, index=True)
+
+    host_ca_id = db.Column(db.Integer, db.ForeignKey('ssh_cas.id'), nullable=True, index=True)
+    user_ca_id = db.Column(db.Integer, db.ForeignKey('ssh_cas.id'), nullable=True, index=True)
+    host_ca = db.relationship('SSHCertificateAuthority', foreign_keys=[host_ca_id])
+    user_ca = db.relationship('SSHCertificateAuthority', foreign_keys=[user_ca_id])
+
+    # Host token: SHA-256 hash only in DB; plaintext handed out once at enroll
+    token_hash = db.Column(db.String(64), unique=True)
+    token_prefix = db.Column(db.String(16))
+
+    # One-time bootstrap token for the install command (hash only)
+    bootstrap_hash = db.Column(db.String(64), index=True)
+    bootstrap_expires = db.Column(db.DateTime)
+
+    public_key = db.Column(db.Text)
+    principals = db.Column(db.Text)  # JSON list, fixed at enroll
+
+    current_cert_id = db.Column(db.Integer, db.ForeignKey('ssh_certificates.id'), nullable=True)
+    current_cert = db.relationship('SSHCertificate', foreign_keys=[current_cert_id])
+
+    auto_renew = db.Column(db.Boolean, default=True, nullable=False)
+    status = db.Column(db.String(10), default=STATUS_PENDING, nullable=False, index=True)
+
+    # Per-host overrides (NULL = inherit from host_ca)
+    host_cert_ttl = db.Column(db.Integer, nullable=True)
+    renew_threshold_percent = db.Column(db.Integer, nullable=True)
+    # Boolean sync flag: reset to False when CA/cert config changes on an active host,
+    # set back to True once the agent applies the new config on check-in.
+    config_synced = db.Column(db.Boolean, default=True, nullable=False)
+
+    last_seen_at = db.Column(db.DateTime)
+    last_krl_sync_at = db.Column(db.DateTime)
+    last_renew_at = db.Column(db.DateTime)
+    last_ip = db.Column(db.String(45))
+    created_at = db.Column(db.DateTime, default=utc_now)
+
+    def get_principals(self):
+        try:
+            return json.loads(self.principals) if self.principals else []
+        except (json.JSONDecodeError, TypeError):
+            return []
+
+    def cert_status(self):
+        """Lifecycle of the current host certificate for the UI."""
+        if not self.current_cert:
+            return None
+        if self.current_cert.revoked:
+            return 'revoked'
+        if self.current_cert.valid_to <= utc_now():
+            return 'expired'
+        total = (self.current_cert.valid_to - self.current_cert.valid_from).total_seconds()
+        remaining = (self.current_cert.valid_to - utc_now()).total_seconds()
+        threshold = self.renew_threshold_percent or (self.host_ca.renew_threshold_percent if self.host_ca else 30) or 30
+        if total > 0 and remaining <= total * threshold / 100:
+            return 'expiring'
+        return 'valid'
+
+    def to_dict(self):
+        cert = self.current_cert
+        now = utc_now()
+        ca_ttl = self.host_ca.host_cert_ttl if self.host_ca else 2592000
+        ca_threshold = self.host_ca.renew_threshold_percent if self.host_ca else 30
+        return {
+            'id': self.id,
+            'hostname': self.hostname,
+            'host_ca_id': self.host_ca_id,
+            'host_ca_name': self.host_ca.descr if self.host_ca else None,
+            'host_ca_default_ttl': ca_ttl,
+            'host_ca_default_threshold': ca_threshold,
+            'user_ca_id': self.user_ca_id,
+            'user_ca_name': self.user_ca.descr if self.user_ca else None,
+            'host_cert_ttl': self.host_cert_ttl,
+            'renew_threshold_percent': self.renew_threshold_percent,
+            'effective_host_cert_ttl': self.host_cert_ttl or ca_ttl,
+            'effective_renew_threshold_percent': self.renew_threshold_percent or ca_threshold,
+            'config_synced': bool(self.config_synced),
+            'token_prefix': self.token_prefix,
+            'principals': self.get_principals(),
+            'public_key': self.public_key,
+            'auto_renew': bool(self.auto_renew),
+            'status': self.status,
+            'cert_id': cert.id if cert else None,
+            'cert_serial': cert.serial if cert else None,
+            'cert_valid_to': utc_isoformat(cert.valid_to) if cert else None,
+            'cert_status': self.cert_status(),
+            'has_token': bool(self.token_hash),
+            'bootstrap_active': bool(self.bootstrap_hash and self.bootstrap_expires
+                                      and self.bootstrap_expires > now),
+            'last_seen_at': utc_isoformat(self.last_seen_at),
+            'last_krl_sync_at': utc_isoformat(self.last_krl_sync_at),
+            'last_renew_at': utc_isoformat(self.last_renew_at),
+            'last_ip': self.last_ip,
+            'created_at': utc_isoformat(self.created_at),
+        }
+
+    def __repr__(self):
+        return f'<SSHManagedHost {self.hostname} ({self.status})>'

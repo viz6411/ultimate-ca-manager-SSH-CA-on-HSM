@@ -26,6 +26,8 @@ NOT_RESTORED_AS_ARCHIVED = {
         "sealed under each archive's own salt and nonce: never the same bytes twice",
     ('certificates', 'private_key_pem_encrypted'):
         "sealed under each archive's own salt and nonce: never the same bytes twice",
+    ('ssh_cas', 'private_key_pem_encrypted'):
+        "sealed under each archive's own salt and nonce: never the same bytes twice",
 }
 
 # {(section, column): exception} -- columns whose model refuses a generic value.
@@ -146,8 +148,9 @@ def test_nearly_every_section_is_exercised(both_archives):
     archived, _restored, _refused = both_archives
     empty = sorted(name for name in manifest.SECTIONS
                    if isinstance(archived.get(name), list) and not archived[name])
-    # An SSH authority needs a real key pair, and its certificates hang off it
-    assert empty == ['ssh_cas', 'ssh_certificates'], f'sections seeded with no row: {empty}'
+    # Nothing is empty any more: the seeder asks the SSH service for a real
+    # authority, and its certificates and managed hosts hang off it.
+    assert empty == [], f'sections seeded with no row: {empty}'
 
 
 def test_every_exemption_is_still_needed_and_explained(both_archives):
